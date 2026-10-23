@@ -8,6 +8,18 @@ internal static class Program
         Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         ApplicationConfiguration.Initialize();
         Application.SetDefaultFont(FontAssets.Ui(10));
+        if (args.Length == 2 && args[0] == "--devices-smoke")
+        {
+            var directory = Path.GetFullPath(args[1]); Directory.CreateDirectory(directory);
+            using var devices = new SimpleForm(new SmokeRoutes(), new SmokeMeter(), new SmokeStore(), new RotaGame.Windows.GameLibrary(Path.Combine(directory, "games.json"), () => []), deviceStore: new RotaGame.Core.DeviceProfileStore(Path.Combine(directory, "device.json")));
+            devices.Shown += async (_, _) =>
+            {
+                try { await devices.RunDeviceSmokeAsync(directory); }
+                catch (Exception ex) { File.WriteAllText(Path.Combine(directory, "devices-error.txt"), ex.ToString()); Environment.ExitCode = 1; }
+                finally { devices.Close(); }
+            };
+            Application.Run(devices); return;
+        }
         if (args.Length == 2 && args[0] == "--update-integration-complete")
         {
             File.WriteAllText(Path.GetFullPath(args[1]), "PASS: reiniciado após atualização real; versão=" + Velopack.Locators.VelopackLocator.Current.CurrentlyInstalledVersion + "; assinatura=PANT_CORE; arquivo=" + Environment.ProcessPath);
@@ -87,7 +99,7 @@ internal static class Program
                 try
                 {
                     await account.RunAccountSmokeAsync(Path.GetFullPath(args[1]));
-                    if (links.Count != 5 || links.Any(url => !url.StartsWith("https://login.tailscale.com/"))) throw new InvalidOperationException("Os links não seguiram o fluxo oficial: " + links.Count);
+                    if (links.Count != 4 || links.Any(url => new Uri(url).Host is not ("login.tailscale.com" or "console.tailscale.com"))) throw new InvalidOperationException("Os links não seguiram o fluxo oficial: " + links.Count);
                 }
                 catch (Exception ex) { Directory.CreateDirectory(args[1]); File.WriteAllText(Path.Combine(args[1], "account-error.txt"), ex.ToString()); Environment.ExitCode = 1; }
                 finally { account.Close(); }

@@ -16,12 +16,20 @@ internal sealed partial class SimpleForm
         {
             WindowState = FormWindowState.Normal; Show(); Activate();
             var area = Screen.FromControl(this).WorkingArea; Location = area.Location;
+            var account = (SmokeConnectionSession)_connectionSession!;
+            await account.LoginAsync(new Progress<string>(_ => { }), new Progress<string>(_ => { }), default);
             foreach (var scenario in new[] { "empty-resize", "wrapped-resize", "scroll-resize", "account-resize", "create-invite-resize", "invite-resize", "authorization-resize" })
             {
                 ShowDashboard();
                 ApplyLibrary(scenario == "empty-resize" ? [] : Enumerable.Range(1, scenario == "wrapped-resize" ? 4 : 9)
                     .Select(i => new GameProfile("render-" + i, "Validação de layout " + i, ["NotAGame"], Environment.ProcessPath)).ToArray());
-                if (scenario is "account-resize" or "create-invite-resize" or "invite-resize" or "authorization-resize") ShowConnectionPage(scenario == "create-invite-resize" ? ConnectionSection.InviteFriend : scenario == "invite-resize" ? ConnectionSection.AcceptInvite : scenario == "authorization-resize" ? ConnectionSection.AuthorizeBridge : ConnectionSection.Account);
+                if (scenario is "account-resize" or "create-invite-resize" or "invite-resize" or "authorization-resize")
+                {
+                    SelectRole(scenario == "account-resize" ? RotaGame.Core.DeviceRole.Unknown : scenario == "invite-resize" ? RotaGame.Core.DeviceRole.Player : RotaGame.Core.DeviceRole.Bridge);
+                    account.PeerAvailable = false; account.Approved = scenario == "create-invite-resize";
+                    ShowConnectionPage(); await _connectionPage!.RefreshStatusAsync();
+                    _connectionPage.SetOffering(scenario is "create-invite-resize" or "authorization-resize");
+                }
                 for (var i = 0; i < 9; i++)
                 {
                     ClientSize = (i % 3) switch { 0 => new Size(1080, 720), 1 => new Size(1340, 800), _ => new Size(Math.Min(1600, area.Width), Math.Min(860, area.Height)) };
@@ -45,7 +53,7 @@ internal sealed partial class SimpleForm
             var maximize = chrome.Single(b => b.Action == DashboardWindowAction.Maximize);
             maximize.PerformClick(); if (WindowState != FormWindowState.Maximized) throw new InvalidOperationException("O botão de maximizar falhou.");
             maximize.PerformClick(); if (WindowState != FormWindowState.Normal) throw new InvalidOperationException("O botão de restaurar falhou.");
-            log.Add("PASS: native presented pixels agree with a full repaint after 63 size changes, seven maximize/restore cycles, four account tabs and scrolling; real minimize/maximize/restore buttons work. Tooltips disabled only during pixel comparison. No network changed.");
+            log.Add("PASS: native presented pixels agree with a full repaint after 63 size changes, seven maximize/restore cycles, wizard role/share/accept/permission states and scrolling; real minimize/maximize/restore buttons work. Tooltips disabled only during pixel comparison. No network changed.");
             File.WriteAllLines(Path.Combine(directory, "rendering-smoke.txt"), log);
         }
         finally { TopMost = false; }
@@ -84,13 +92,14 @@ internal sealed partial class SimpleForm
 
 internal sealed class SmokeConnectionSession : IConnectionSession
 {
+    public bool PeerAvailable { get; set; } = true;
     public bool Installed { get; private set; }
     private bool _connected;
     public bool Approved { get; set; }
     public int NetworkChoices { get; private set; }
     public Task<RotaGame.Windows.TailStatus?> ReadAsync(CancellationToken ct) => Task.FromResult<RotaGame.Windows.TailStatus?>(!Installed ? null :
-        new(_connected ? "Running" : "NeedsLogin", "", true, "Validação local (teste)", Approved, _connected ? [new("100.64.0.2", "PC do amigo (teste)", true, true, "direct")] : []));
+        new(_connected ? "Running" : "NeedsLogin", "", true, "Validação local (teste)", Approved, _connected && PeerAvailable ? [new("100.64.0.2", "PC do amigo (teste)", true, true, "direct")] : []));
     public Task InstallAsync(IProgress<string> progress, CancellationToken ct) { Installed = true; progress.Report("Instalação controlada para validação da interface."); return Task.CompletedTask; }
     public async Task LoginAsync(IProgress<string> progress, IProgress<string> openUrl, CancellationToken ct, bool chooseNetwork = false)
-    { if (chooseNetwork) NetworkChoices++; openUrl.Report("https://login.tailscale.com/a/test-only"); await Task.Delay(40, ct); _connected = true; progress.Report("Teste da interface · nenhuma conta real foi conectada."); }
+    { await InstallAsync(progress, ct); if (chooseNetwork) NetworkChoices++; openUrl.Report("https://login.tailscale.com/a/test-only"); await Task.Delay(40, ct); _connected = true; progress.Report("Teste da interface · nenhuma conta real foi conectada."); }
 }

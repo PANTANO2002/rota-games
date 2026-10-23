@@ -23,6 +23,9 @@ internal sealed class RouteDiagram : Control
     private int _rowCount = 1;
     private double _frozenPhase;
     private Form? _owner;
+    private ReceivedDevice? _remote;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal ReceivedDevice? Remote { get => _remote; set { _remote = value; Changed(); } }
     internal event EventHandler? LayoutNeedsChanged;
     internal int PreferredContentHeight => _rowCount switch { 1 => 128, 2 => 196, _ => 264 };
     internal bool AnimationRunning => _animation.Enabled;
@@ -100,6 +103,20 @@ internal sealed class RouteDiagram : Control
 
     internal IReadOnlyList<DiagramRouteView> Snapshot(DateTimeOffset now)
     {
+        if (_remote is { Frame.Measurements: { } m } remote)
+        {
+            var fresh = m.SampleAgeMs is >= 0 and < 5000 && now >= remote.ReceivedAt && (now - remote.ReceivedAt).TotalMilliseconds + m.SampleAgeMs < 5000;
+            var optionsRemote = m.Routes.ToList();
+            if (optionsRemote.All(r => r.Id != m.RouteId)) optionsRemote.Add(new(m.RouteId, m.RouteName, null, null, null, null, false));
+            return optionsRemote.OrderBy(r => r.Id.Length == 0 ? 0 : r.Id == m.RouteId ? 1 : 2).Take(3).Select(r =>
+            {
+                var current = r.Id == m.RouteId; var live = current && m.Active; var moving = live && fresh && m.Confirmed;
+                var value = live ? fresh && m.Confirmed ? m.AverageMs : null : r.AverageMs;
+                return new DiagramRouteView(new(r.Id, r.Name), value.HasValue ? value.Value.ToString("0.0") + " ms" : "—",
+                    live ? moving ? "Ao vivo · PC do amigo" : "Aguardando sonda do amigo" : "Comparado no PC do amigo",
+                    current ? m.Active ? "NO AMIGO" : "ÚLTIMA ROTA" : "COMPARADA", current, moving);
+            }).ToArray();
+        }
         var options = _routes.Values.ToList();
         if (options.All(r => !r.IsDirect)) options.Add(RouteOption.Direct);
         return options.OrderBy(r => r.IsDirect ? 0 : r.Id == (_active ? _current?.Id : _selected?.Id) ? 1 : r.Id == _selected?.Id ? 2 : 3)
@@ -120,7 +137,7 @@ internal sealed class RouteDiagram : Control
 
     private void Changed()
     {
-        var rows = Math.Clamp(_routes.Count + (_routes.ContainsKey("") ? 0 : 1), 1, 3);
+        var rows = _remote is not null ? Snapshot(DateTimeOffset.UtcNow).Count : Math.Clamp(_routes.Count + (_routes.ContainsKey("") ? 0 : 1), 1, 3);
         if (rows != _rowCount) { _rowCount = rows; LayoutNeedsChanged?.Invoke(this, EventArgs.Empty); }
         UpdateAnimation(); Invalidate();
         AccessibleDescription = string.Join("; ", Snapshot(DateTimeOffset.UtcNow).Select(r => r.Route.Name + ": " + r.Ping + ", " + r.Detail + ", " + r.Badge));
@@ -128,7 +145,7 @@ internal sealed class RouteDiagram : Control
     private void UpdateAnimation()
     {
         if (IsDisposed) return;
-        var moving = _active && !_bridgeMode && !_freeze && Visible && IsHandleCreated && _owner?.WindowState != FormWindowState.Minimized
+        var moving = (_remote?.Frame.Measurements?.Active ?? _active) && (!_bridgeMode || _remote is not null) && !_freeze && Visible && IsHandleCreated && _owner?.WindowState != FormWindowState.Minimized
             && Snapshot(DateTimeOffset.UtcNow).Any(r => r.Moving);
         _animation.Enabled = moving;
     }
@@ -163,7 +180,7 @@ internal sealed class RouteDiagram : Control
         var cardWidth = Math.Clamp(width * .32f, 180, 236); var cardX = (left.Right + right.Left - cardWidth) / 2;
         var rowSpace = (graphBottom - graphTop) / rows.Count; var cardHeight = Math.Min(62, Math.Max(46, rowSpace - 9));
         var anyMoving = rows.Any(r => r.Moving); var tint = _selected is not null ? DashboardTheme.Green : Cyan;
-        var label = _bridgeMode ? "MODO PONTE" : !_active ? _report is not null ? "COMPARAÇÃO ENCERRADA" : "AGUARDANDO CONEXÃO" : _selected is not null ? "CAMINHO EM USO" : _sample is null ? "BUSCANDO CONEXÃO" : "COMPARANDO ROTAS";
+        var label = _remote is not null ? "MEDIDO NO PC DO AMIGO" : _bridgeMode ? "MODO PONTE" : !_active ? _report is not null ? "COMPARAÇÃO ENCERRADA" : "AGUARDANDO CONEXÃO" : _selected is not null ? "CAMINHO EM USO" : _sample is null ? "BUSCANDO CONEXÃO" : "COMPARANDO ROTAS";
         using (var dot = new SolidBrush(_active && anyMoving ? tint : DashboardTheme.Muted)) g.FillEllipse(dot, 7, 11, 6, 6);
         DrawLabel(g, label, new RectangleF(20, 0, Math.Max(1, width - 255), 27), 8.2f, _active ? tint : DashboardTheme.Muted, FontStyle.Bold);
         DrawLabel(g, "PING ICMP · IDA E VOLTA", new RectangleF(Math.Max(210, width - 209), 0, 205, 27), 7.5f, DashboardTheme.Muted, center: true);
@@ -190,9 +207,9 @@ internal sealed class RouteDiagram : Control
             g.DrawString(digits, number, numberBrush, new RectangleF(card.Right - 120, card.Y + 20, 84, 29), rightAlign);
             if (hasUnit) DrawLabel(g, "ms", new RectangleF(card.Right - 33, card.Y + 24, 27, 22), 8.5f, highlight ? color : DashboardTheme.Muted);
         }
-        Endpoint(left, _bridgeMode ? "Este PC · ponte" : "Seu PC", "ORIGEM", false, anyMoving ? tint : DashboardTheme.Muted);
-        Endpoint(right, _destination?.Ip == "127.0.0.1" ? "Teste local" : "Destino do jogo", _destination?.Ip ?? "Detecção automática", true, anyMoving ? tint : DashboardTheme.Muted);
-        var footer = PreviewLabel ?? (_bridgeMode ? "A medição do jogo acontece no PC do jogador" : !_active && _report is not null ? "Medição pausada · médias da comparação" : _sample is null ? "As pontes aparecem quando disponíveis e medidas" : "RTT do caminho completo · animação ilustrativa do fluxo");
+        Endpoint(left, _remote is not null ? "Amigo · Acre" : _bridgeMode ? "Este PC · ponte" : "Seu PC", "ORIGEM", false, anyMoving ? tint : DashboardTheme.Muted);
+        Endpoint(right, _destination?.Ip == "127.0.0.1" ? "Teste local" : "Destino do jogo", _remote?.Frame.Measurements?.Target ?? _destination?.Ip ?? "Detecção automática", true, anyMoving ? tint : DashboardTheme.Muted);
+        var footer = PreviewLabel ?? (_remote is not null ? "Medições recebidas de " + _remote.Frame.Name + " · ICMP" : _bridgeMode ? "Aguardando as medições do PC do amigo" : !_active && _report is not null ? "Medição pausada · médias da comparação" : _sample is null ? "As pontes aparecem quando disponíveis e medidas" : "RTT do caminho completo · animação ilustrativa do fluxo");
         DrawLabel(g, footer, new RectangleF(0, height - 24, width, 22), 7.6f, PreviewLabel is null ? DashboardTheme.Muted : DashboardTheme.Accent, center: true);
         g.Restore(state);
 

@@ -16,6 +16,8 @@ public interface IAutomaticRoutes
     Task SelectAsync(RouteOption option, CancellationToken ct);
 }
 
+public interface IRouteDiscoveryDiagnostics { IReadOnlyList<string> DiscoveryNotes { get; } }
+
 public interface IAutomaticMeter
 {
     Task<MeasurementBlock> MeasureAsync(string target, RouteOption route, ProbeSettings settings,
@@ -86,7 +88,7 @@ public static class AutomaticPolicy
             b.Samples.Any(s => s.RouteBefore.Fingerprint != directFingerprint || s.RouteAfter.Fingerprint != directFingerprint)))
             return new(RouteOption.Direct, "A conexão direta mudou durante os testes. Conexão direta mantida sem concluir sobre as pontes.", baseline, baseline);
         var winner = RouteOption.Direct; var best = baseline;
-        foreach (var group in trials.Where(t => !t.Route.IsDirect && t.Route.Link == "direct").GroupBy(t => t.Route.Id))
+        foreach (var group in trials.Where(t => !t.Route.IsDirect && t.Route.Link is "direct" or "relay").GroupBy(t => t.Route.Id))
         {
             if (group.Count() < 2) continue;
             if (group.Any(t => t.Block.TargetIp != reference.TargetIp || t.Block.Settings != reference.Settings)) continue;
@@ -108,7 +110,7 @@ public static class AutomaticPolicy
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.7.0";
+    public string Version { get; init; } = "0.8.0";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public required string Game { get; init; }
     public required ObservedDestination Destination { get; init; }
@@ -129,7 +131,8 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
         try
         {
             status?.Report("Procurando pontes disponíveis…");
-            var candidates = (await routes.DiscoverAsync(ct)).Where(c => !c.IsDirect && c.Link == "direct").GroupBy(c => c.Id).Select(g => g.First()).Take(8).ToList();
+            var candidates = (await routes.DiscoverAsync(ct)).Where(c => !c.IsDirect && c.Link is "direct" or "relay").GroupBy(c => c.Id).Select(g => g.First()).Take(8).ToList();
+            if (routes is IRouteDiscoveryDiagnostics diagnostics) report.Notes.AddRange(diagnostics.DiscoveryNotes);
             status?.Report("Medindo conexão direta…");
             await Measure(RouteOption.Direct);
             if (report.Trials[0].Block.Stats.Received >= 10)
@@ -153,6 +156,11 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
             status?.Report("Confirmando a conexão direta…");
             await Measure(RouteOption.Direct);
             report.Choice = AutomaticPolicy.Choose(report.Trials);
+            if (!report.Trials.Any(t => !t.Route.IsDirect))
+            {
+                var reason = candidates.Count == 0 ? report.Notes.FirstOrDefault() ?? "Nenhuma ponte disponível para comparar." : report.Notes.LastOrDefault() ?? "As pontes disponíveis não puderam ser medidas.";
+                report.Choice = report.Choice with { Reason = reason + " Conexão direta mantida." };
+            }
             await lease.ApplyAsync(report.Choice.Winner, ct);
             status?.Report(report.Choice.Reason);
             return report;

@@ -134,3 +134,18 @@ O próximo teste objetivo é coletar baselines do computador no Acre, identifica
 - Smoke da tela principal, diagrama com ICMP local e introdução passaram. A assinatura PANT_CORE aparece no rodapé, na introdução e nos metadados do EXE.
 
 A publicação online e a consulta ao feed GitHub são verificadas separadamente após criar a Release. Os testes não comprovam melhora nos jogos ou funcionamento da ponte entre os PCs reais.
+
+Publicação concluída: https://github.com/PANTANO2002/rota-games/releases/tag/v0.7.0. A rotina do GitHub terminou com sucesso; GithubSource sem credenciais descobriu e baixou 0.7.0, validando o pacote. O link fixo do instalador respondeu HTTP 200. Fonte pública expandida em src/, tests/, docs/, installer/, branding/ e licenses/.
+
+
+## Versão 0.8.0 · conexão e painel dos dois PCs
+
+- 74/74 testes passaram: papel e parceiro persistidos, próximos passos derivados do estado, links de compartilhamento e convites antigos, login concluído pelo serviço mesmo com CLI pendente, limites/rejeições do protocolo privado, dados reais ICMP transportados por TCP local, seleção de ponte DERP com os mesmos limites e invalidação ao mudar de tipo de túnel.
+- `--devices-smoke`: painel de jogador produz medições ICMP reais locais; a ponte recebe por TCP e exibe exatamente a média, gráfico, diagrama e comparação recebidos. Indicadores identificam PC do amigo. Dados antigos perdem o estado atual, e a desconexão limpa os valores. Nova janela preserva papel e parceiro.
+- `--account-smoke`: assistente avança após login, permissão e descoberta; aceita /admin/invite/ sem trocar rede e rejeita hosts estranhos. Sem conta ou rede real alterada.
+- `--render-smoke`: sete cenários, 63 mudanças de tamanho e sete ciclos maximizar/restaurar; incluiu escolha de papel, compartilhar, aceitar e permissão. Pixels apresentados iguais à repintura, sem rastros antigos. Botões nativos de minimizar/maximizar/restaurar passaram.
+- `--simple-smoke` e `--diagram-smoke`: ICMP local real, biblioteca vazia, cartões distribuídos e três rotas em 1600/1340/1080 px. Comparação de pixels do diagrama: 0,0000% nos três tamanhos (animação congelada e tooltips desativados só no teste para comparar o mesmo quadro).
+- `--update-smoke`: aviso no app aberto, adiamento, aplicação automática na abertura, cancelamento, erros e restauração prévia continuam passando.
+
+O diagnóstico somente de leitura encontrou um peer aprovado online acessível por DERP, que a 0.7 excluía. A 0.8 inclui esse caminho na comparação; isso não demonstra melhora de ping. A nova versão ainda não foi testada entre os PCs reais de Acre e Cascavel. Não se alterou a configuração Tailscale nem se abriu firewall real durante os testes locais de telemetria. Os testes de rede usaram loopback explicitamente habilitado, proibido no modo de produção.
+O instalador 0.8.0 passou na verificação do payload incorporado. O pacote real foi descoberto/baixado pelo atualizador e uma cópia adulterada foi rejeitada por checksum. Uma cópia portátil isolada de 0.7.0 aplicou 0.8.0 e reiniciou confirmando versão 0.8.0, sem alterar a instalação normal ou rotas do usuário.

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AssemblyName>RotaGame</AssemblyName><Version>0.7.0</Version><ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode><ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>Assets/RotaGame.ico</ApplicationIcon>
+    <AssemblyName>RotaGame</AssemblyName><Version>0.8.0</Version><ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode><ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>Assets/RotaGame.ico</ApplicationIcon>
     <Authors>PANT_CORE</Authors><Company>PANT_CORE</Company><Copyright>Copyright © 2026 PANT_CORE</Copyright><Product>RotaGame · PANT_CORE</Product>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../RotaGame.Windows/RotaGame.Windows.csproj" /></ItemGroup>

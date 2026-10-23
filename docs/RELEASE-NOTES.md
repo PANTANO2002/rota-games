@@ -1,11 +1,14 @@
-# RotaGame 0.7.0 · PANT_CORE
+# RotaGame 0.8.0 — PANT_CORE
 
-- Atualizador integrado: ao abrir, verifica e aplica uma nova versão; durante o uso, avisa e aguarda Atualizar agora / Depois.
-- Instalador Windows x64 com solicitação de administrador pelo Windows.
-- Convite com instruções, botões de copiar/colar e reconhecimento dos computadores já disponíveis na rede.
-- Layout da conta mede o texto e distribui botões sem sobreposição.
-- Assinatura PANT_CORE no painel, na introdução e nos metadados do programa.
+- Duas escolhas grandes: Vou jogar neste PC (Acre) e Este PC é a ponte (Cascavel). A função e o parceiro ficam salvos.
+- Assistente com uma ação por vez, avançando pelo estado real após o login e a permissão. Conta conectada não volta a pedir login.
+- Convites de compartilhamento de máquina aceitos, sem exigir troca de rede. Convites antigos de usuário continuam reconhecidos.
+- Reconhecimento do outro RotaGame e painel da ponte com as medições recebidas do jogador, incluindo média, variação, p95, falhas, gráfico e caminho. Requer 0.8 nos dois PCs.
+- Comparação inclui túneis diretos e caminhos por intermediário DERP, sob os mesmos limites de qualidade. A rota só muda se houver vantagem medida. Mudanças do tipo de túnel invalidam o bloco.
+- Motivo visível quando apenas a direta pode ser medida. Botão mostra verificação, espera pelo jogo, ativação e desativação.
+- Ajustes de contraste, identificação dos PCs e distribuição do espaço em janelas menores.
+- Atualizador automático mantido: ao abrir aplica a nova versão; com o app aberto oferece Atualizar agora / Depois.
 
-Para migrar de 0.6 ou anterior, instale esta versão uma vez. O atualizador funciona na instalação e no pacote portátil completo; extraia todo o ZIP. A assinatura PANT_CORE identifica autoria e não é um certificado digital Authenticode.
+Tailscale já usa WireGuard. O login e a permissão inicial de compartilhamento continuam na página oficial. Sem VPS ou serviço próprio de provisionamento, essa autorização não pode ser inventada pelo app. Não é necessário configurar IP público ou roteador.
 
-O diagnóstico mostra ping ICMP real e pode diferir do jogo. A comparação depende de pontes autorizadas; não há garantia de redução de ping. O túnel entre os dois PCs ainda precisa de validação em campo.
+Os indicadores são ICMP, podem diferir do contador do jogo e não garantem melhora. A ponte usa saída geral IPv4, sem separar tráfego por jogo. Testes locais cobrem comunicação entre painéis e recuperação de rotas; a nova versão ainda requer validação real entre os dois PCs.

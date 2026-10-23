@@ -45,7 +45,7 @@ internal sealed partial class SimpleForm
         headerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); headerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         headerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 310)); headerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 142)); top.Controls.Add(headerGrid);
         _master.Dock = DockStyle.Fill; _master.Margin = new Padding(25, 13, 0, 13); _master.BackColor = top.BackColor;
-        _master.Click += async (_, _) => { if (_active || HasRecovery()) await DeactivateAsync(); else _operation = ActivateAsync(); };
+        _master.Click += async (_, _) => await ToggleConnectionAsync();
         headerGrid.Controls.Add(_master, 0, 0);
         var chrome = new DashboardFlowLayout { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(6, 12, 0, 0), BackColor = top.BackColor, Margin = Padding.Empty };
         AddWindowButton(DashboardWindowAction.Minimize, "Minimizar", () => WindowState = FormWindowState.Minimized);
@@ -67,11 +67,11 @@ internal sealed partial class SimpleForm
         BuildUpdateBanner(); shell.Controls.Add(_updateBanner, 0, 1);
         var sidebar = new DashboardFlowLayout { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.FromArgb(13, 17, 23), Padding = new Padding(11, 18, 0, 0), Margin = Padding.Empty };
         var logo = new DashboardBrand { Size = new Size(52, 52), BackColor = sidebar.BackColor, AccessibleName = "RotaGame" }; sidebar.Controls.Add(logo); _tips.SetToolTip(logo, "RotaGame");
-        AddNav("⌂", "Jogos e conexões", () => { ShowDashboard(); if (!_active) _play.Checked = true; });
-        AddNav("⇄", "Usar este PC como ponte", () => { ShowDashboard(); if (!_active) _host.Checked = true; });
+        AddNav("⌂", "Jogos e conexões", ShowDashboard);
+        AddNav("⇄", "Usar este PC como ponte", () => { ShowDashboard(); SelectRole(RotaGame.Core.DeviceRole.Bridge); });
         AddNav("⚙", "Conta e conexão", () => _setup.PerformClick());
         AddNav("↻", "Atualizações do RotaGame", ShowUpdates);
-        var version = Label("0.7", 9, Muted); version.Dock = DockStyle.None; version.Size = new Size(52, 30); version.TextAlign = ContentAlignment.MiddleCenter; sidebar.Controls.Add(version);
+        var version = Label("0.8", 9, Muted); version.Dock = DockStyle.None; version.Size = new Size(52, 30); version.TextAlign = ContentAlignment.MiddleCenter; sidebar.Controls.Add(version);
         workspace.Controls.Add(sidebar, 0, 0);
         workspace.Controls.Add(_pageHost, 1, 0); _pageHost.Controls.Add(_pageScroll);
         var body = _body; body.Padding = new Padding(24, 10, 24, 16);
@@ -82,7 +82,10 @@ internal sealed partial class SimpleForm
         var title = new DashboardTableLayout { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         title.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         title.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65)); title.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-        title.Controls.Add(Label("Jogos e conexões", 21, Ink), 0, 0);
+        var libraryTitle = new DashboardPanel { Dock = DockStyle.Fill };
+        libraryTitle.Controls.Add(Label("Jogos e conexões", 21, Ink));
+        _automaticGame.Dock = DockStyle.Right; _automaticGame.Width = 205; _automaticGame.AutoSize = false; _automaticGame.Font = FontAssets.Ui(8.5f);
+        libraryTitle.Controls.Add(_automaticGame); title.Controls.Add(libraryTitle, 0, 0);
         var libraryHeading = new DashboardPanel { Dock = DockStyle.Fill, BackColor = Canvas };
         var addHolder = new DashboardPanel { Dock = DockStyle.Right, Width = 151, BackColor = Canvas };
         _addGameHeader.Size = new Size(146, 34); _addGameHeader.AutoSize = false; _addGameHeader.Location = new Point(5, 12); _addGameHeader.Font = FontAssets.Ui(9);
@@ -90,17 +93,25 @@ internal sealed partial class SimpleForm
         _libraryStatus.TextAlign = ContentAlignment.MiddleRight; _libraryStatus.Font = FontAssets.Ui(8);
         libraryHeading.Controls.Add(_libraryStatus); libraryHeading.Controls.Add(addHolder); title.Controls.Add(libraryHeading, 1, 0); body.Controls.Add(title, 0, 0);
         _gamesPanel.Dock = DockStyle.Fill; _gamesPanel.Margin = Padding.Empty; body.Controls.Add(_gamesPanel, 0, 1); _gamesPanel.SizeChanged += (_, _) => ResizeCards();
-        var actionCard = new DashboardSurface { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 7), Padding = new Padding(16, 12, 16, 10) };
-        var actions = new DashboardFlowLayout { Dock = DockStyle.Fill, WrapContents = false, BackColor = PanelColor };
-        foreach (var role in new[] { _play, _host }) { role.ForeColor = Ink; role.Margin = new Padding(0, 8, 17, 0); }
-        _play.Text = "Jogar neste PC"; _host.Text = "Oferecer este PC como ponte";
-        _automaticGame.Height = 34; _automaticGame.Font = FontAssets.Ui(9); _automaticGame.Margin = new Padding(0, 1, 0, 0);
+        var actionCard = new DashboardSurface { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 7), Padding = new Padding(10, 7, 10, 7) };
+        var controlGrid = _actionsGrid = new DashboardTableLayout { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty };
+        controlGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); controlGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 244));
+        controlGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 94)); controlGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 41));
+        var choices = new DashboardTableLayout { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+        choices.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); choices.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); choices.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _playerChoice.Dock = _bridgeChoice.Dock = DockStyle.Fill; _playerChoice.Margin = _bridgeChoice.Margin = Padding.Empty;
+        choices.Controls.Add(_playerChoice, 0, 0); choices.Controls.Add(_bridgeChoice, 1, 0); controlGrid.Controls.Add(choices, 0, 0);
+        _activate.Dock = DockStyle.Fill; _activate.AutoSize = false; _activate.Margin = new Padding(10, 17, 0, 17); controlGrid.Controls.Add(_activate, 1, 0);
+        _deactivate.Visible = false;
+        var identityGrid = new DashboardTableLayout { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = new Padding(7, 0, 0, 0) };
+        identityGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); identityGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
+        identityGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50)); identityGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        identityGrid.Controls.Add(_identity, 0, 0); identityGrid.Controls.Add(_partnerCaption, 0, 1);
+        _pickPartner.Dock = DockStyle.Fill; _pickPartner.AutoSize = false; _pickPartner.Font = FontAssets.Ui(9); identityGrid.Controls.Add(_pickPartner, 1, 0); identityGrid.SetRowSpan(_pickPartner, 2);
+        controlGrid.Controls.Add(identityGrid, 0, 1);
         _automaticGame.Click += (_, _) => { if (!_active) { _game.SelectedIndex = 0; RebuildCards(); } };
-        actions.Controls.AddRange([_play, _host, _automaticGame]);
-        var primary = new DashboardFlowLayout { Dock = DockStyle.Right, Width = 238, WrapContents = false, FlowDirection = FlowDirection.RightToLeft, BackColor = PanelColor };
-        _activate.Size = new Size(132, 38); _activate.AutoSize = false; _deactivate.Size = new Size(96, 38); _deactivate.AutoSize = false;
-        _activate.Margin = _deactivate.Margin = new Padding(6, 0, 0, 0); primary.Controls.AddRange([_activate, _deactivate]);
-        actionCard.Controls.Add(actions); actionCard.Controls.Add(primary); body.Controls.Add(actionCard, 0, 2);
+        _quickState.TextAlign = ContentAlignment.MiddleCenter; controlGrid.Controls.Add(_quickState, 1, 1);
+        actionCard.Controls.Add(controlGrid); body.Controls.Add(actionCard, 0, 2);
         var metrics = new DashboardTableLayout { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, BackColor = Canvas };
         metrics.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var metricNames = new[] { "PING MÉDIO ATUAL", "VARIAÇÃO DO PING", "PICOS DE LATÊNCIA · P95", "FALHAS DO TESTE" };
@@ -110,7 +121,7 @@ internal sealed partial class SimpleForm
             var card = new DashboardSurface { Dock = DockStyle.Fill, Padding = new Padding(16, 10, 12, 8), Margin = new Padding(0, 3, i == 3 ? 0 : 10, 8) };
             var cardLayout = new DashboardTableLayout { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, BackColor = PanelColor };
             cardLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); cardLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            cardLayout.Controls.Add(Label(metricNames[i], 8, Muted), 0, 0); _metrics[i] = Label("—", i == 0 ? 28 : 24, i == 0 ? Mint : Ink); cardLayout.Controls.Add(_metrics[i], 0, 1);
+            _metricTitles[i] = Label(metricNames[i], 8, Muted); cardLayout.Controls.Add(_metricTitles[i], 0, 0); _metrics[i] = Label("—", i == 0 ? 28 : 24, i == 0 ? Mint : Ink); cardLayout.Controls.Add(_metrics[i], 0, 1);
             card.Controls.Add(cardLayout); metrics.Controls.Add(card, i, 0);
         }
         body.Controls.Add(metrics, 0, 3);
@@ -191,7 +202,7 @@ internal sealed partial class SimpleForm
         if ((_active && !_offering) || _restoring) return;
         if (_connectionPage is null)
         {
-            _connectionPage = new ConnectionPage(_connectionSession, _connectionUrl, _inviteClipboard);
+            _connectionPage = new ConnectionPage(_connectionSession, _connectionUrl, _inviteClipboard, () => _device, SelectRole);
             _connectionPage.BusyChanged += (_, _) => SetControls();
             _connectionPage.PrepareBridgeRequested += (_, _) => { if (!_active) { _host.Checked = true; _operation = ActivateAsync(); } };
             _connectionPage.StatusChanged += status =>
@@ -260,7 +271,7 @@ internal sealed partial class SimpleForm
             var scale = DeviceDpi / 96f; var gap = (int)(11 * scale); var count = _gamesPanel.Controls.Count;
             var available = _gamesPanel.ClientSize.Width;
             var columns = Math.Min(count, Math.Max(1, (available + gap) / ((int)(240 * scale) + gap)));
-            var width = Math.Max(1, (available - (columns - 1) * gap) / columns); var height = (int)(108 * scale);
+            var width = Math.Max(1, (available - (columns - 1) * gap) / columns); var height = (int)((_pageScroll.ClientSize.Height < 790 * scale ? 80 : 108) * scale);
             _gameRows = (count + columns - 1) / columns;
             for (var i = 0; i < count; i++) _gamesPanel.Controls[i].SetBounds(i % columns * (width + gap), i / columns * (height + gap), width, height);
         }
@@ -273,12 +284,19 @@ internal sealed partial class SimpleForm
         if (_sizingPage || _body.RowStyles.Count < 7) return; _sizingPage = true;
         try
         {
-            var s = DeviceDpi / 96f;
-            var libraryHeight = (_gameRows * 108 + (_gameRows - 1) * 11) * s;
-            _body.RowStyles[0].Height = 52 * s; _body.RowStyles[1].Height = libraryHeight;
-            _body.RowStyles[2].Height = 70 * s; _body.RowStyles[3].Height = 96 * s; _body.RowStyles[6].Height = 50 * s;
+            var s = DeviceDpi / 96f; var compact = _pageScroll.ClientSize.Height < 790 * s;
+            var cardHeight = compact ? 80 : 108;
+            if (_gamesPanel.Controls.Count > 0 && _gamesPanel.Controls[0].Height != (int)(cardHeight * s)) ResizeCards();
+            var libraryHeight = (_gameRows * cardHeight + (_gameRows - 1) * 11) * s;
+            _body.RowStyles[0].Height = (compact ? 40 : 52) * s; _body.RowStyles[1].Height = libraryHeight;
+            _body.RowStyles[2].Height = (compact ? 132 : 160) * s; _body.RowStyles[3].Height = (compact ? 84 : 96) * s; _body.RowStyles[6].Height = (compact ? 48 : 50) * s;
+            if (_actionsGrid is not null) { _actionsGrid.RowStyles[0].Height = (compact ? 80 : 94) * s; _actionsGrid.RowStyles[1].Height = (compact ? 27 : 41) * s; }
+            _activate.Margin = new Padding((int)(10 * s), (int)((compact ? 10 : 17) * s), 0, (int)((compact ? 10 : 17) * s));
+            _identity.Font = _partnerCaption.Font = FontAssets.Ui(compact ? 8.5f : 10);
+            for (var i = 0; i < 4; i++) if (_metrics[i] is not null) _metrics[i].Font = FontAssets.Title(i == 0 ? compact ? 24 : 28 : compact ? 20 : 24);
+            _addGameHeader.Top = (int)((compact ? 4 : 12) * s);
             var middleHeight = Math.Max(190, _routeMap.PreferredContentHeight + 66) * s;
-            var minimum = 704 * s + libraryHeight - 108 * s + middleHeight - 190 * s;
+            var minimum = (compact ? 710 : 790) * s + libraryHeight - cardHeight * s + middleHeight - 190 * s;
             var extra = Math.Max(0, _pageScroll.ClientSize.Height - minimum);
             _body.RowStyles[4].SizeType = SizeType.Absolute; _body.RowStyles[4].Height = middleHeight + extra * .62f;
             _pageScroll.SetExtent(Math.Max(_pageScroll.ClientSize.Height, (int)minimum));
@@ -324,6 +342,7 @@ internal sealed partial class SimpleForm
         ((DashboardButton)_automaticGame).SelectedStyle = _game.SelectedIndex == 0; _automaticGame.Invalidate();
         foreach (Control card in _gamesPanel.Controls) card.Enabled = !_active;
         _table.Visible = _resultScroll.Visible = _table.Rows.Count > 0; _emptyResults.Visible = !_table.Visible; UpdateResultScroll();
+        if (_remoteShown) return;
         _routeMap.BridgeMode = _host.Checked;
         _routeMap.Report = _routeMap.Destination is not null && _report?.Destination == _routeMap.Destination ? _report : null;
         _routeMap.SetActivity(_active && !_host.Checked && !_restoring && _cts?.IsCancellationRequested != true && _routeMap.Destination is not null,

@@ -36,7 +36,9 @@ internal sealed partial class SimpleForm
     internal async Task<bool> PrepareForUpdateAsync()
     {
         if (_connectionPage?.Busy == true || _restoring) return false;
-        await DeactivateAsync(); return !_active && !_offering && !_lease.Active && !HasRecovery();
+        await DeactivateAsync();
+        if (_active || _offering || _lease.Active || HasRecovery()) return false;
+        await PauseDevicesAsync(); return true;
     }
     private async Task CheckUpdatesAsync()
     {
@@ -61,6 +63,7 @@ internal sealed partial class SimpleForm
     private void UpdateUi()
     {
         if (_updates is null || IsDisposed || _shell is null) return;
+        if (_updates.State == UpdateState.Error) ResumeDevices();
         var show = _updates.State is UpdateState.Available or UpdateState.Downloading or UpdateState.Preparing or UpdateState.Restarting;
         _updateBanner.Visible = show; _shell.RowStyles[1].Height = show ? 69 * DeviceDpi / 96f : 0;
         _updateCaption.Text = _updates.Release is { } release ? "RotaGame " + release.Version + " disponível" : "Atualizações";

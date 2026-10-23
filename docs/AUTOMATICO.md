@@ -1,4 +1,4 @@
-# Guia do modo automático — 0.6
+# Guia do modo automático — 0.8
 
 ## Biblioteca de jogos
 
@@ -20,21 +20,15 @@ As sondas são ICMP, não o protocolo do jogo. ICMP pode ser filtrado ou limitad
 
 ## Preparação inicial
 
-A engrenagem abre **Conta e conexão** dentro do RotaGame. A aba acompanha o status a cada três segundos enquanto estiver visível. **Entrar ou criar conta** instala o componente se necessário e inicia a autorização oficial. **Instalar conexão** permite instalar separadamente, e **Atualizar status** refaz a consulta. Os botões de convite e aprovação ficam disponíveis após a conexão da conta.
+Escolha uma vez o papel deste PC na tela principal. **Este PC é a ponte** identifica Cascavel; **Vou jogar neste PC** identifica Acre. A escolha fica salva, sem tentar deduzir a cidade por IP.
 
-O fluxo inclui os seguintes passos:
+**Ativar ponte** em Cascavel e **Ativar conexão** no Acre consultam o estado real. Conta já conectada não precisa de novo login. Quando faltar uma etapa, abre o assistente com apenas uma próxima ação. Após a entrada oficial no navegador, avança sozinho. Se os dois já têm acesso à ponte, não precisam repetir convite.
 
-1. Instalação de Tailscale via `winget`, pacote `Tailscale.Tailscale`, iniciada pelo usuário. Se não houver gerenciador ou a instalação falhar, indica o [instalador oficial](https://tailscale.com/download/windows).
-2. Entrada na conta pelo fluxo oficial do componente, com autorização no navegador.
-3. Em Cascavel, na aba **Minha conta**, clique **Criar convite para meu amigo**. Em Users, use Invite users, escolha membro e copie o link para enviar ao amigo.
-4. No Acre, abra **Aceitar convite**, cole o link de usuário `/uinv/…` e clique **Abrir e aceitar convite**. Depois de aceitar na página oficial, use **Já aceitei · conectar este PC** e selecione a rede convidada. Essa ação abre uma nova escolha de rede mesmo se o PC já estiver conectado a outra conta/rede; aceitar o convite no navegador sozinho não troca a rede do cliente.
-5. Em Cascavel, abra **Autorizar ponte** e clique **Preparar este PC como ponte**. Se a autorização continuar pendente, clique **Abrir autorização oficial**: encontre o PC pelo nome exibido, use Edit route settings / Edit exit node, marque Use as exit node e salve. A aba verifica a permissão real a cada três segundos e mostra quando a ponte está ativa. Se a rede já tiver aprovação automática configurada, a confirmação aparece sem essa etapa manual.
+Para uma primeira conexão entre contas próprias, Cascavel prepara e aprova a ponte pela orientação mostrada; depois usa **Compartilhar minha ponte**. Na página oficial, encontre o nome exibido, use Share e marque **Allow use as exit node**. Envie o link. No Acre, **Colar convite → Aceitar convite e conectar** abre a aceitação oficial, sem trocar de rede. O programa acompanha a aparição da ponte. Convites antigos `/uinv/` continuam com uma etapa explícita de escolha da rede convidada.
 
-Login, convite e autorização exigem interação do dono da conta. O programa não cria nem compartilha senhas e não inventa autorização. Nenhum arquivo de chave WireGuard é pedido. O serviço de transporte cuida do túnel; não é exigida configuração manual de roteador no fluxo inicial.
+A autorização inicial ainda é concedida pelo dono da conta na página oficial. Não é preciso configurar roteador, IP público ou chaves WireGuard. Tailscale já fornece o túnel. O app instala o componente oficial se necessário. As senhas ficam com o provedor; o RotaGame não cria cadastro próprio nem modifica a identidade do login Google/Tailscale.
 
-A identidade RotaGame está na aba, sem substituir a identificação do Google/Tailscale. O login segue no navegador oficial; convite e autorização ainda abrem as páginas da conta. Não há serviço próprio que elimine contas Tailscale, nem convite gerado silenciosamente pela API nesta versão. A operação de entrada bloqueia novas ativações até terminar. Fechar o aplicativo cancela os processos auxiliares pendentes da sessão de preparação.
-
-No PC de Cascavel, também é possível usar **Oferecer este PC como ponte → Ativar ponte** na tela principal. Se faltar aprovação, o aplicativo mostra a aba **Autorizar ponte**, com o acesso à etapa oficial. Deixe-o ligado, conectado e sem suspender. Após a aprovação, o outro PC deve conseguir descobrir a oferta. Desativar retira a oferta desta sessão. Durante a preparação/oferta, a troca de conta ou rede fica bloqueada. O programa não instala nada no PC remoto automaticamente; a preparação deve ocorrer nos dois computadores.
+Deixe os dois RotaGame na mesma versão, a partir de 0.8. O programa reconhece os papéis e salva o parceiro quando só há um candidato. Com mais de uma ponte, use **Escolher PC**. A ponte recebe os indicadores e o gráfico medidos no amigo. A tela identifica essa origem; amostras antigas não são apresentadas como ping atual. Desativar em Cascavel retira a oferta desta sessão. O PC da ponte deve permanecer ligado e conectado.
 
 ## Busca e seleção
 
@@ -43,7 +37,7 @@ No computador do amigo, abra o jogo, entre em treino e clique **Ativar**, manten
 1. Observa por aproximadamente 18 segundos os metadados de envios de processos dos perfis conhecidos.
 2. Escolhe um destino IPv4 público com atividade sustentada, priorizando UDP. O IPv4 fica fixo nessa ativação.
 3. Descobre até oito pontes autorizadas e online na rede privada.
-4. Tenta estabelecer ligação direta entre os PCs. Se uma ponte depender de intermediário DERP/peer relay, ela fica fora desta seleção inicial.
+4. Tenta estabelecer ligação direta entre os PCs. Pontes via DERP também são medidas e identificadas como intermediário; peer relay continua excluído.
 5. Mede direta, dois blocos de cada ponte elegível, e direta novamente.
 6. Escolhe a direta ou uma ponte com vantagem suficiente e começa a monitorar.
 
@@ -55,7 +49,7 @@ O app compara somente caminhos disponíveis: não tem servidores públicos próp
 
 ## Durante a partida
 
-As trocas iniciais podem reconectar a sessão; faça a ativação em treino, antes da partida competitiva. Após escolher, esta versão mantém o caminho e monitora. Não faz alternância periódica para “perseguir” cada oscilação de ping. Se a ponte ficar indisponível, mudar para um intermediário ou houver cinco falhas consecutivas de sonda, tenta voltar à direta. Esse retorno também pode reconectar a partida.
+As trocas iniciais podem reconectar a sessão; faça a ativação em treino, antes da partida competitiva. Após escolher, esta versão mantém o caminho e monitora. Não faz alternância periódica para “perseguir” cada oscilação de ping. Se a ponte ficar indisponível, mudar o tipo de túnel medido ou houver cinco falhas consecutivas de sonda, tenta voltar à direta. Esse retorno também pode reconectar a partida.
 
 A ponte é uma saída geral de internet. Navegação e downloads do computador do amigo também podem passar pela sua conexão; isso pode ocupar upload e aumentar latência. Esta versão não aplica roteamento por processo.
 

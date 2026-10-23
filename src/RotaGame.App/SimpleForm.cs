@@ -40,8 +40,12 @@ internal sealed partial class SimpleForm : Form
     private readonly IInviteClipboard? _inviteClipboard;
 
     public SimpleForm(IAutomaticRoutes? routes = null, IAutomaticMeter? meter = null, IRecoveryStore? store = null, GameLibrary? library = null,
-        IConnectionSession? connectionSession = null, Action<string>? connectionUrl = null, IReadOnlyList<GameProfile>? startupProfiles = null, IInviteClipboard? inviteClipboard = null)
+        IConnectionSession? connectionSession = null, Action<string>? connectionUrl = null, IReadOnlyList<GameProfile>? startupProfiles = null, IInviteClipboard? inviteClipboard = null, IDeviceProfileStore? deviceStore = null)
     {
+        _controlled = routes is not null;
+        _deviceStore = deviceStore ?? (_controlled ? new MemoryDeviceProfileStore() : new DeviceProfileStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "device.json")));
+        try { _device = _deviceStore.Load(); } catch (Exception) { _device = DeviceProfile.Create(); }
+        _host.Checked = _device.Role == DeviceRole.Bridge; _play.Checked = !_host.Checked;
         _connectionSession = connectionSession; _connectionUrl = connectionUrl;
         _startupProfiles = startupProfiles;
         _inviteClipboard = inviteClipboard;
@@ -51,11 +55,11 @@ internal sealed partial class SimpleForm : Form
         _lease = new(_routes, _store);
         _library = library ?? new GameLibrary(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "games.json"));
         BuildDashboard();
+        ConfigureDevices();
         _tips.SetToolTip(_metrics[0], "Média das últimas 30 sondas respondidas no caminho atual. Atualizada a cada resposta; não é o contador interno do jogo.");
         _tips.SetToolTip(_metrics[3], "Falhas de sondas ICMP podem ser filtragem do destino; não comprovam perda dos pacotes do jogo.");
         _tips.SetToolTip(_routeMap, "Ping: média ICMP real do caminho completo. As animações ilustram o fluxo; não representam pacotes capturados nem latências de cada trecho.");
-        _play.CheckedChanged += (_, _) => { if (!_active) SetControls(); };
-        _activate.Click += (_, _) => { if (!_active) _operation = ActivateAsync(); };
+        _activate.Click += async (_, _) => await ToggleConnectionAsync();
         _deactivate.Click += async (_, _) => await DeactivateAsync();
         _setup.Click += (_, _) => ShowConnectionPage();
         _export.Click += (_, _) => SaveReport();
@@ -66,7 +70,7 @@ internal sealed partial class SimpleForm : Form
             _updatesLifetime.Cancel();
             if (_updateTask is not null) await _updateTask;
             await DeactivateAsync();
-            if (!_lease.Active && !_offering && !HasRecovery()) { _closing = true; Close(); }
+            if (!_lease.Active && !_offering && !HasRecovery()) { await StopDevicesAsync(); _closing = true; Close(); }
         };
         Shown += async (_, _) =>
         {
@@ -87,14 +91,16 @@ internal sealed partial class SimpleForm : Form
 
     private void SetControls()
     {
-        _activate.Enabled = !_active && !_restoring && _connectionPage?.Busy != true && !HasRecovery();
+        _activate.Enabled = !_starting && !_restoring && _connectionPage?.Busy != true;
         _deactivate.Enabled = !_restoring && (_active || _offering || HasRecovery());
         _game.Enabled = _play.Checked; _game.Visible = !_active; _lockedGame.Visible = _active; _lockedGame.Text = _host.Checked ? "Ponte deste computador" : _game.Text;
         _play.AutoCheck = _host.AutoCheck = !_active && _connectionPage?.Busy != true;
         _setup.Enabled = (!_active || _offering) && !_restoring;
         _connectionPage?.SetOffering(_offering, _active || _restoring);
         _export.Enabled = _report is not null;
-        _activate.Text = _active ? "Ativo" : _host.Checked ? "Ativar ponte" : "Ativar";
+        _activate.Text = _starting ? "Verificando…" : _restoring ? "Desativando…" : _active || _offering ? "■  Desativar" : HasRecovery() ? "Restaurar conexão" : _device.Role == DeviceRole.Unknown ? "Conectar este PC" : _host.Checked ? "▶  Ativar ponte" : "▶  Ativar conexão";
+        ((DashboardButton)_activate).SelectedStyle = _active; _activate.Font = FontAssets.Title(19);
+        UpdateDeviceLabels();
         SyncDashboard();
     }
 
@@ -121,7 +127,7 @@ internal sealed partial class SimpleForm : Form
                 _message.Text = "Este PC deve ficar ligado. Seu amigo pode clicar em Ativar no computador dele.";
                 if (!status.SelfApproved)
                 {
-                    _message.Text = "Confira a autorização na aba Autorizar ponte. Depois seu amigo poderá testar os caminhos.";
+                    _message.Text = "Conclua a permissão inicial na tela de conexão. Ela avança sozinha quando a ponte ficar autorizada.";
                     ShowConnectionPage(ConnectionSection.AuthorizeBridge);
                 }
                 return;

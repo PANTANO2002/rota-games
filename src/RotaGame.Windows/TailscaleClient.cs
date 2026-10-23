@@ -39,11 +39,17 @@ public sealed class CommandRunner : ICommandRunner
     }
 }
 
-public sealed record TailPeer(string Ip, string Name, bool Online, bool Offered, string Link);
-public sealed record TailStatus(string State, string CurrentExit, bool ExitOnline, string SelfName, bool SelfApproved, IReadOnlyList<TailPeer> Peers);
-
-public sealed class TailscaleClient(ICommandRunner runner, string? executableOverride = null) : IAutomaticRoutes
+public sealed record TailPeer(string Ip, string Name, bool Online, bool Offered, string Link) { public string NodeId { get; init; } = ""; }
+public sealed record TailStatus(string State, string CurrentExit, bool ExitOnline, string SelfName, bool SelfApproved, IReadOnlyList<TailPeer> Peers)
 {
+    public string SelfIp { get; init; } = "";
+    public string SelfNodeId { get; init; } = "";
+}
+
+public sealed class TailscaleClient(ICommandRunner runner, string? executableOverride = null) : IAutomaticRoutes, IRouteDiscoveryDiagnostics
+{
+    private readonly List<string> _discoveryNotes = [];
+    public IReadOnlyList<string> DiscoveryNotes => _discoveryNotes;
     public static string? FindExecutable()
     {
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tailscale", "tailscale.exe");
@@ -70,14 +76,15 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
             {
                 var e = entry.Value;
                 var link = Str(e, "PeerRelay").Length > 0 ? "peer-relay" : Str(e, "CurAddr").Length > 0 ? "direct" : "relay";
-                peers.Add(new(Ip(e), Str(e, "HostName"), Flag(e, "Online") && !Flag(e, "Expired"), Flag(e, "ExitNodeOption"), link));
+                peers.Add(new(Ip(e), Str(e, "HostName"), Flag(e, "Online") && !Flag(e, "Expired"), Flag(e, "ExitNodeOption"), link) { NodeId = Str(e, "ID") is { Length: > 0 } id ? id : entry.Name });
             }
         var current = ""; var online = true;
         if (root.TryGetProperty("ExitNodeStatus", out var exit) && exit.ValueKind == JsonValueKind.Object)
         { current = Ip(exit); online = Flag(exit, "Online"); if (current.Length == 0) throw new InvalidOperationException("O ponto de saída atual não pôde ser identificado; a configuração foi preservada."); }
         root.TryGetProperty("Self", out var self);
         return new(Str(root, "BackendState"), current, online, self.ValueKind == JsonValueKind.Object ? Str(self, "HostName") : Environment.MachineName,
-            self.ValueKind == JsonValueKind.Object && Flag(self, "ExitNodeOption"), peers);
+            self.ValueKind == JsonValueKind.Object && Flag(self, "ExitNodeOption"), peers)
+        { SelfIp = self.ValueKind == JsonValueKind.Object ? Ip(self) : "", SelfNodeId = self.ValueKind == JsonValueKind.Object ? Str(self, "ID") : "" };
     }
 
     public async Task<TailStatus> StatusAsync(CancellationToken ct)
@@ -100,17 +107,28 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
 
     public async Task<IReadOnlyList<RouteOption>> DiscoverAsync(CancellationToken ct)
     {
-        if (!Installed) return [];
-        var status = await StatusAsync(ct); if (status.State != "Running") return [];
+        _discoveryNotes.Clear();
+        if (!Installed) { _discoveryNotes.Add("Componente da ponte ainda não instalado. Foi medida a conexão direta."); return []; }
+        var status = await StatusAsync(ct); if (status.State != "Running") { _discoveryNotes.Add("Conta ainda não conectada ao túnel. Foi medida a conexão direta."); return []; }
         var candidates = status.Peers.Where(p => p.Online && p.Offered && p.Ip.Length > 0).OrderBy(p => p.Name).Take(8).ToList();
         var result = new List<RouteOption>();
+        if (candidates.Count == 0) _discoveryNotes.Add(status.Peers.Any(p => p.Online) ? "Há PCs conectados, mas nenhum está aprovado e compartilhado para uso como ponte. Confira a permissão no PC da ponte." : "Nenhuma ponte online encontrada. Abra o RotaGame nos dois PCs e ative a ponte.");
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
-            try { await runner.RunAsync(Executable, ["ping", "--c=3", "--timeout=2s", candidate.Ip], TimeSpan.FromSeconds(10), ct); }
-            catch (TimeoutException) { continue; }
+            try
+            {
+                var ping = await runner.RunAsync(Executable, ["ping", "--c=3", "--timeout=2s", candidate.Ip], TimeSpan.FromSeconds(10), ct);
+                if (ping.ExitCode != 0) { _discoveryNotes.Add(candidate.Name + ": não respondeu à verificação do túnel."); continue; }
+            }
+            catch (TimeoutException) { _discoveryNotes.Add(candidate.Name + ": demorou para responder à verificação do túnel."); continue; }
             var fresh = (await StatusAsync(ct)).Peers.FirstOrDefault(p => p.Ip == candidate.Ip);
-            if (fresh is { Online: true, Offered: true, Link: "direct" }) result.Add(new(fresh.Ip, fresh.Name, fresh.Link));
+            if (fresh is { Online: true, Offered: true, Link: "direct" or "relay" })
+            {
+                result.Add(new(fresh.Ip, fresh.Name + (fresh.Link == "relay" ? " · intermediário" : ""), fresh.Link));
+                _discoveryNotes.Add(fresh.Name + (fresh.Link == "relay" ? ": ponte com intermediário; será medida assim." : ": túnel direto disponível para comparação."));
+            }
+            else _discoveryNotes.Add(candidate.Name + ": ficou indisponível ou utiliza um tipo de retransmissão não suportado.");
         }
         return result;
     }
@@ -142,7 +160,7 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
         if (!option.IsDirect)
         {
             var peer = (await StatusAsync(ct)).Peers.FirstOrDefault(p => p.Ip == option.Id);
-            if (peer is not { Online: true, Link: "direct" }) throw new InvalidOperationException("A ponte passou a usar um intermediário ou ficou indisponível.");
+            if (peer is not { Online: true } || peer.Link != option.Link || peer.Link is not ("direct" or "relay")) throw new InvalidOperationException("O caminho do túnel mudou ou a ponte ficou indisponível. É necessário comparar novamente.");
         }
     }
 

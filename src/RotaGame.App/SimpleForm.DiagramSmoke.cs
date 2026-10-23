@@ -6,7 +6,7 @@ internal sealed partial class SimpleForm
 {
     internal async Task RunDiagramSmokeAsync(string directory)
     {
-        Directory.CreateDirectory(directory); _gameWatcher.Stop(); TopMost = true;
+        Directory.CreateDirectory(directory); _gameWatcher.Stop(); _tips.Active = false; TopMost = true;
         var log = new List<string>();
         try
         {
@@ -56,6 +56,7 @@ internal sealed partial class SimpleForm
                 using var presented = CapturePresented(); Invalidate(true); Refresh(); await Task.Delay(90);
                 using var refreshed = CapturePresented();
                 var difference = PixelDifference(presented, refreshed);
+                if (difference > .003) { presented.Save(Path.Combine(directory, "failed-presented.png")); refreshed.Save(Path.Combine(directory, "failed-refreshed.png")); }
                 Check(difference <= .003, "O diagrama com três caminhos deixou pixels antigos após redimensionar.");
                 log.Add($"PASS: três rotas em {size.Width}×{size.Height}; pixels apresentados vs. repintura completa: {difference:P4} (animação congelada para comparar o mesmo quadro).");
             }

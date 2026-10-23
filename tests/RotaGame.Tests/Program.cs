@@ -168,6 +168,7 @@ if (args.Contains("--public-probe"))
     });
 }
 
+tests.AddRange(DeviceTests.All());
 var failures = 0;
 foreach (var (name, action) in tests)
 {

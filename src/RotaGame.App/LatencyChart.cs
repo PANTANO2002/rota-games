@@ -1,11 +1,13 @@
 using System.Drawing.Drawing2D;
 using RotaGame.Core;
+using System.ComponentModel;
 
 namespace RotaGame.App;
 
 internal sealed class LatencyChart : Control
 {
     public List<Sample> Samples { get; } = [];
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] internal IReadOnlyList<GraphPoint>? RemotePoints { get; set; }
     public LatencyChart() { SetStyle(ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true); BackColor = DashboardTheme.Surface; }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -19,7 +21,7 @@ internal sealed class LatencyChart : Control
         using var line = new Pen(Color.FromArgb(65, 221, 179), 2.5f);
         using var fail = new Pen(Color.FromArgb(255, 145, 113), 2);
         var rect = new Rectangle(60, 25, Math.Max(1, Width - 84), Math.Max(1, Height - 66));
-        var samples = Samples.TakeLast(180).ToList();
+        var samples = RemotePoints?.TakeLast(180).ToList() ?? Samples.TakeLast(180).Select(s => new GraphPoint(s.At, s.RttMs, s.Outcome)).ToList();
         var max = Math.Max(20, Math.Ceiling((samples.Where(s => s.RttMs.HasValue).Select(s => s.RttMs!.Value).DefaultIfEmpty(0).Max() * 1.15) / 20) * 20);
         for (var i = 0; i <= 4; i++)
         {

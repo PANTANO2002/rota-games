@@ -1,4 +1,4 @@
-# RotaGame 0.7 — PANT_CORE
+# RotaGame 0.8 — PANT_CORE
 
 **Autoria e assinatura: PANT_CORE.** Otimizador experimental de caminhos e diagnóstico para jogos no Windows 11 x64. Não garante redução de ping.
 
@@ -40,32 +40,31 @@ Os cartões mostram **Em execução** ou **Fechado**. O programa verifica os pro
 
 Com **Ativar** ligado, o programa pode ficar aguardando o jogo iniciar: quando o reconhece, espera tráfego e começa a análise. Quando o jogo fecha, restaura a conexão anterior e volta a aguardar outro jogo da biblioteca. **Adicionar o executável não inicia o jogo nem cria uma conexão especial com o servidor**; o jogo deve ser aberto normalmente.
 
-## Primeira preparação
+## Conectar os dois PCs
 
-Nos dois PCs, abra a engrenagem **Conta e conexão**. Cada pessoa usa sua própria conta.
+Instale a mesma versão nos dois PCs. Escolha uma vez na tela principal:
 
-A engrenagem agora abre a aba **Conta e conexão** dentro da janela principal. **Entrar ou criar conta** instala o componente se necessário e inicia a autenticação oficial, com Google ou outro provedor disponível. A aba acompanha automaticamente o estado deste PC e os computadores disponíveis. Ela não cria um cadastro próprio do RotaGame nem modifica a identidade das telas do provedor.
+1. **Cascavel: Este PC é a ponte → Ativar ponte.** Se faltar login ou permissão, o assistente mostra apenas a próxima ação e avança quando o serviço confirma.
+2. **Acre: Vou jogar neste PC → Ativar conexão.** Entre na própria conta. Se a ponte já estiver aprovada e visível, não precisa repetir convite.
+3. Se ainda não houver acesso, em Cascavel siga **Compartilhar minha ponte**. Na página oficial, localize o nome exibido, escolha Share e marque **Allow use as exit node**. Envie o link. No Acre, use **Colar convite → Aceitar convite e conectar** e aceite na página oficial. O app procura a ponte automaticamente.
 
-Há quatro abas com o estilo do programa:
+O novo fluxo compartilha a máquina, sem pedir ao amigo que troque de rede. Links antigos de convite de usuário continuam aceitos e têm uma etapa explícita de conexão à rede convidada. A função e a identificação do outro PC ficam salvas. Não se deduz a cidade pelo IP: a escolha identifica qual PC oferece a ponte.
 
-- **Minha conta:** entrada, instalação e computadores encontrados. Se os dois PCs já aparecem na mesma rede, não é necessário um novo convite.
-- **Convidar amigo:** mostra de onde vem o link e abre a página oficial. Em Users, use Invite external users → Copy invite link → Member → Generate & copy invite link. Volte e use **Colar link** / **Copiar convite para enviar**. O convite só fica nesta sessão e não é salvo pelo RotaGame.
-- **Aceitar convite:** no Acre, cole o link de usuário (`https://login.tailscale.com/uinv/…`), clique **Abrir e aceitar convite** e aceite na página oficial. Depois use **Já aceitei · conectar este PC**, escolhendo a rede convidada na autorização. O programa consulta o estado real e mostra as pontes encontradas; abrir o convite não é tratado como prova de aceitação.
-- **Autorizar ponte:** em Cascavel, clique **Preparar este PC como ponte**. Se já houver aprovação automática na rede, o estado muda ao ser confirmado pelo serviço. Se ficar pendente, **Abrir autorização oficial** leva à lista de PCs: encontre o nome mostrado na aba, escolha Edit route settings / Edit exit node, marque Use as exit node e salve. A aba verifica o resultado a cada três segundos; também há **Verificar autorização**. A oferta permanece ativa até Desativar ou encerrar normalmente o app.
+A entrada continua no navegador oficial do Tailscale/Google. O programa confirma o estado real e sai da etapa de login mesmo se o auxiliar ainda estiver esperando. Ele não coleta senha nem cria uma tela Google falsa. Sem um serviço próprio de provisionamento, o dono precisa conceder a autorização inicial na página oficial. Não é necessário digitar IPv4 público, abrir porta no roteador ou configurar WireGuard manualmente; Tailscale já fornece esse túnel.
 
-O login Google/Tailscale e as autorizações da conta continuam no navegador oficial. O app não gera convites nem aprova permissões administrativas silenciosamente. O Google não permite autenticação OAuth em navegadores embutidos controlados pelo aplicativo: [política oficial](https://developers.google.com/identity/protocols/oauth2/policies). Eliminar contas Tailscale para os usuários exigiria um serviço próprio de cadastro e provisionamento, que não está hospedado nem incluído nesta versão.
-
-Essas etapas de login, convite e autorização precisam da interação do dono da conta. Depois da preparação, o aplicativo encontra as pontes autorizadas e muda o caminho automaticamente. Não é necessário configurar WireGuard ou roteador manualmente.
+Os RotaGame reconhecem os papéis pelo canal privado. Quando existe uma única ponte RotaGame, o parceiro é salvo; com várias, use **Escolher PC**. As medições completas só vão para o parceiro selecionado. Em Cascavel, os indicadores dizem **PC do amigo**: são os valores medidos no Acre, não um ping local inventado. Se a comunicação ou a sonda ficar antiga, o app retira os valores atuais. Ambos precisam usar 0.8 ou posterior.
 
 ## Para jogar
 
-1. No RotaGame, deixe **Jogar neste PC** e clique **Ativar**. Pode fazer isso antes de abrir o jogo.
+1. No RotaGame do Acre, escolha **Vou jogar neste PC** e clique **Ativar conexão**. Pode fazer isso antes de abrir o jogo.
 2. Abra o jogo cadastrado e entre em treino para gerar tráfego. Ele será reconhecido automaticamente.
 3. Aguarde a descoberta e a comparação da direta com as pontes disponíveis, normalmente alguns minutos.
 4. Acompanhe o **ping médio atual** e as médias da comparação inicial.
 5. Clique **Desativar** para parar e restaurar a preferência de conexão anterior.
 
 As trocas iniciais podem reconectar a sessão. Ative em treino, antes da partida competitiva. Depois de escolher, o programa mantém o caminho e o monitora; não alterna pontes a cada oscilação. Se não houver melhora suficiente, mantém a direta. Se a ponte falhar, tenta retornar à direta.
+
+O RotaGame de Cascavel mostra os valores recebidos do Acre e distingue conectado, ponte disponível e caminho escolhido. Conta conectada sozinha não prova que a ponte está autorizada. Quando somente a direta for medida, o motivo aparece no resultado. Pontes com intermediário DERP também são comparadas; só são escolhidas se passarem pelos mesmos limites de qualidade.
 
 O PC de casa precisa permanecer ligado, conectado e sem suspender. A ponte usa saída geral de internet: quando escolhida, navegação e downloads do amigo também podem passar por sua conexão. Esta versão não separa tráfego por aplicativo.
 
@@ -75,7 +74,7 @@ O PC de casa precisa permanecer ligado, conectado e sem suspender. A ponte usa s
 
 A descoberta usa metadados por processo e perfis heurísticos dos três jogos. Pode observar voz ou outro jogador, especialmente em GTA Online. Um destino sem resposta ICMP impede uma conclusão confiável. Ao mudar de sessão/região, desative e ative novamente em treino.
 
-**Ainda não houve teste de ponte real entre Cascavel e Acre.** Instalação/login/convite/autorização do Tailscale precisam ser concluídos nos PCs de casa. Não foi instalado ou conectado um transporte nesta máquina de trabalho. As chamadas de controle foram validadas com fixtures de contrato; o diagnóstico, a descoberta ETW e a interface tiveram testes locais reais.
+**Esta correção ainda não foi validada entre Acre e Cascavel.** Foram testados o protocolo dos painéis com ICMP e TCP reais em loopback, os estados de login, o seletor de rotas e a interface. O diagnóstico local também confirmou que um peer aprovado pode estar online por intermediário; a versão 0.8 passa a medir esse caminho, sem presumir que melhora o ping.
 
 Leia o [guia do modo automático](docs/AUTOMATICO.md), a [arquitetura atual](docs/ARQUITETURA-AUTO.md), a [validação](VALIDACAO.md) e os [componentes externos](THIRD_PARTY.md). O Laboratório foi retirado da navegação: as medições e a comparação usadas para jogar estão na tela principal. O diagnóstico manual anterior fica apenas como ferramenta de desenvolvimento pelo argumento `--advanced`, documentado em docs/DIAGNOSTICO-AVANCADO.md.
 

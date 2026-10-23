@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using RotaGame.Windows;
+using RotaGame.Core;
 
 namespace RotaGame.App;
 
@@ -46,15 +47,22 @@ internal sealed class ConnectionSession : IConnectionSession
         void ReadLine(object _, DataReceivedEventArgs e)
         {
             if (e.Data is null) return;
-            var match = Regex.Match(e.Data, @"https://login\.tailscale\.com/[a-zA-Z0-9/_?=.&%-]+");
+            var match = Regex.Match(e.Data, @"https://(?:login|console)\.tailscale\.com/[a-zA-Z0-9/_?=.&%-]+");
             if (match.Success && Interlocked.Exchange(ref opened, 1) == 0) openUrl.Report(match.Value);
         }
         process.OutputDataReceived += ReadLine; process.ErrorDataReceived += ReadLine;
         process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromMinutes(4));
-        try { await process.WaitForExitAsync(timeout.Token); }
-        catch (OperationCanceledException) { if (!process.HasExited) process.Kill(true); ct.ThrowIfCancellationRequested(); throw new InvalidOperationException("A autorização ainda não terminou. Você pode tentar entrar novamente."); }
-        if (process.ExitCode != 0 || (await ReadAsync(ct))?.State != "Running") throw new InvalidOperationException("A conta não ficou conectada. Conclua a autorização no navegador e tente novamente.");
+        try
+        {
+            await LoginCompletion.WaitAsync(process.WaitForExitAsync(timeout.Token), async () =>
+            {
+                try { return (await ReadAsync(timeout.Token))?.State == "Running"; }
+                catch (Exception ex) when (ex is TimeoutException or InvalidOperationException) { return false; }
+            }, timeout.Token, chooseNetwork);
+        }
+        catch (OperationCanceledException) { ct.ThrowIfCancellationRequested(); throw new InvalidOperationException("A entrada ainda não foi confirmada. Termine no navegador e tente novamente."); }
+        finally { if (!process.HasExited) { process.Kill(); await process.WaitForExitAsync(CancellationToken.None); } }
         progress.Report("Conta conectada. Continue pelo RotaGame.");
     }
 }

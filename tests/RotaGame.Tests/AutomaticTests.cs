@@ -56,9 +56,21 @@ internal static class AutomaticTests
             var t = Trials(); foreach (var trial in t) { for (var i = 0; i < trial.Block.Samples.Count; i++) trial.Block.Samples[i] = trial.Block.Samples[i] with { Outcome = ProbeOutcome.Timeout, RttMs = null }; }
             var choice = AutomaticPolicy.Choose(t); Check(choice.Winner.IsDirect && choice.DirectStats.MedianMs is null);
         });
-        Test("AUTO: DERP and incomplete candidates are excluded", () =>
+        Test("AUTO: incomplete relay candidates are excluded", () =>
         {
             var t = Trials(); t[1] = new(Bridge with { Link = "relay" }, t[1].Block); t.RemoveAt(2); Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
+        });
+        Test("AUTO: a measured faster DERP path can win with the same quality limits", () =>
+        {
+            var t = Trials(); foreach (var i in new[] { 1, 2 }) t[i] = t[i] with { Route = Bridge with { Link = "relay" } };
+            Check(AutomaticPolicy.Choose(t).Winner.Link == "relay");
+            foreach (var i in new[] { 1, 2 }) t[i] = new(Bridge with { Link = "relay" }, Block(130));
+            Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
+        });
+        Test("AUTO: unknown peer-relay paths remain excluded", () =>
+        {
+            var t = Trials(); foreach (var i in new[] { 1, 2 }) t[i] = t[i] with { Route = Bridge with { Link = "peer-relay" } };
+            Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
         });
         Test("AUTO: chooses the best eligible registered bridge", () =>
         {
@@ -146,11 +158,13 @@ internal static class AutomaticTests
             await client.SelectAsync(RouteOption.Direct, default); Check((await client.ReadAsync(default)).Selector == "");
             Check(runner.Mutations.SequenceEqual(new[] { "--exit-node=100.70.0.2", "--exit-node=" }));
         });
-        Async("TAILSCALE CLI: discovers only online approved direct peers", async () =>
+        Async("TAILSCALE CLI: measures direct and DERP peers, excluding offline or unapproved ones", async () =>
         {
             var client = new TailscaleClient(new TailRunner(), "test-fixture.exe");
-            var options = await client.DiscoverAsync(default); Check(options.Count == 1 && options[0].Id == Bridge.Id);
+            var options = await client.DiscoverAsync(default); Check(options.Count == 2 && options.Any(o => o.Id == Bridge.Id && o.Link == "direct") && options.Any(o => o.Id == "100.70.0.4" && o.Link == "relay"));
             await client.VerifyAsync(RouteOption.Direct, default);
+            var relay = options.Single(o => o.Link == "relay"); await client.SelectAsync(relay, default); await client.VerifyAsync(relay, default);
+            try { await client.VerifyAsync(relay with { Link = "direct" }, default); throw new Exception("Changed tunnel should fail."); } catch (InvalidOperationException) { }
         });
         Test("DISCOVERY: ignores private, CGNAT, multicast and documentation IPs", () =>
         {
