@@ -1,0 +1,96 @@
+name: Versoes RotaGame - PANT_CORE
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Versao estavel (ex. 0.7.0)
+        required: true
+        default: '0.7.0'
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rotagame-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Preparar codigo e versao
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { $env:INPUT_VERSION }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Use uma versao estavel como 0.7.0.' }
+          if (Test-Path -LiteralPath 'RotaGame-source.zip') {
+            # Initial import uploaded by the repository owner. Reject traversal,
+            # absolute paths and workflow changes before extracting any entry.
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $PWD 'RotaGame-source.zip'))
+            try {
+              foreach ($entry in $archive.Entries) {
+                $name = $entry.FullName.Replace('\','/')
+                if ($name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)|:|^\.github/') { throw "Entrada de ZIP rejeitada: $name" }
+              }
+            } finally { $archive.Dispose() }
+            Expand-Archive -LiteralPath 'RotaGame-source.zip' -DestinationPath . -Force
+          }
+          [xml]$project = Get-Content 'src/RotaGame.App/RotaGame.App.csproj'
+          if ($project.Project.PropertyGroup.Version -ne $version) { throw 'A versao do projeto deve coincidir com a release.' }
+          "ROTAGAME_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Validar conexao e biblioteca
+        shell: pwsh
+        run: |
+          dotnet run --project tests/RotaGame.Tests -c Release -- --integration
+          if ($LASTEXITCODE -ne 0) { throw 'Testes falharam.' }
+      - name: Criar instalador e pacotes
+        shell: pwsh
+        run: |
+          dotnet tool install --global vpk --version 1.2.161
+          if ($LASTEXITCODE -ne 0) { throw 'Empacotador indisponivel.' }
+          ./pack.ps1 -Version $env:ROTAGAME_VERSION
+      - name: Validar pacote real e rejeitar adulteracao
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath './app/RotaGame.exe' -ArgumentList @('--update-package-smoke', (Join-Path $PWD 'Releases'), (Join-Path $env:RUNNER_TEMP 'rotagame-package-test')) -PassThru -Wait -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw 'Validacao do pacote falhou.' }
+      - name: Concluir importacao inicial
+        if: github.ref_type != 'tag'
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath 'RotaGame-source.zip') {
+            Remove-Item -LiteralPath 'RotaGame-source.zip'
+            if (Test-Path -LiteralPath 'SHA256SUMS.txt') { Remove-Item -LiteralPath 'SHA256SUMS.txt' }
+            git config user.name 'PANT_CORE'
+            git config user.email '141899945+PANTANO2002@users.noreply.github.com'
+            git add .
+            git commit -m "Publicar codigo RotaGame $env:ROTAGAME_VERSION - PANT_CORE"
+            if ($LASTEXITCODE -ne 0) { throw 'Commit da importacao falhou.' }
+            git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { throw 'A branch mudou; confira antes de publicar.' }
+          }
+      - name: Publicar versao estavel e feed de atualizacoes
+        shell: pwsh
+        run: |
+          $version = $env:ROTAGAME_VERSION
+          $commit = git rev-parse HEAD
+          $assets = @('Releases/RotaGame-Setup.exe', 'Releases/RotaGame-win-Portable.zip', "Releases/RotaGame-$version-full.nupkg", 'Releases/releases.win.json', 'Releases/SHA256SUMS.txt')
+          gh release create "v$version" @assets --target $commit --title "RotaGame $version - PANT_CORE" --notes-file docs/RELEASE-NOTES.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release nao publicada. Nao sobrescreva uma versao existente.' }
