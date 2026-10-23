@@ -1,0 +1,13 @@
+# MODELO: preencha os três campos antes de importar no cliente oficial.
+# Gere a chave privada no Windows e não a envie ao aplicativo/relatório.
+[Interface]
+PrivateKey = PREENCHER_CHAVE_PRIVADA_DO_CLIENTE
+Address = 10.77.0.2/32
+
+[Peer]
+PublicKey = PREENCHER_CHAVE_PUBLICA_DA_VPS
+Endpoint = PREENCHER_IPV4_PUBLICO_DA_VPS:51820
+# Substituir pelo mesmo IPv4 público medido no RotaGame.
+# 203.0.113.10 é somente exemplo de documentação, não servidor real.
+AllowedIPs = 203.0.113.10/32
+PersistentKeepalive = 25
