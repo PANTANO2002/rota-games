@@ -74,3 +74,11 @@ Fechar normalmente também tenta restaurar. Se o processo for encerrado à forç
 - [CLI](https://tailscale.com/docs/reference/tailscale-cli).
 - [Roteamento userspace e ICMP](https://tailscale.com/kb/1177/kernel-vs-userspace-routers).
 - [Microsoft TraceEvent](https://github.com/microsoft/perfview/blob/main/documentation/TraceEvent/TraceEventProgrammersGuide.md).
+
+### Estado e preservação da ponte na 0.8.2
+
+A oferta original é consultada antes de ativar. Se o usuário já a configurou no Tailscale, iniciar/parar o RotaGame preserva essa oferta e informa isso ao encerrar. Se o RotaGame introduziu a oferta, ele a retira ao parar e mantém registro para recuperação. Não se alteram as preferências de uma nova conta/identidade por causa de um registro antigo.
+
+A confirmação pode levar alguns segundos. A tela principal permanece aberta: Confirmando a ponte, Ponte disponível e Permissão não confirmada são estados distintos. Verificar ponte abre a orientação oficial apenas quando o usuário escolhe. O painel não trata clicar em autorizar como prova de aprovação.
+
+No host, amigo conectado não significa ponte em uso. O painel distingue conexão direta, teste da ponte e uso da ponte após escolha e sonda confirmada. A explicação da escolha é recebida do jogador, e a idade dos dados considera também o tempo desde a última mensagem. Conta conectada, aprovação, alcance do túnel e desempenho são verificações separadas.

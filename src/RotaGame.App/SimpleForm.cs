@@ -27,6 +27,11 @@ internal sealed partial class SimpleForm : Form
     private readonly IAutomaticMeter _meter;
     private readonly IRecoveryStore _store;
     private readonly RouteLease _lease;
+    private readonly IBridgeOffers _bridgeOffers;
+    private readonly IBridgeOfferStore _bridgeStore;
+    private readonly BridgeOfferLease _bridgeLease;
+    private DateTimeOffset _bridgeStartedAt;
+    private BridgeReadiness _bridgeReadiness;
     private readonly ToolTip _tips = new();
     private CancellationTokenSource? _cts;
     private Task? _operation;
@@ -40,7 +45,7 @@ internal sealed partial class SimpleForm : Form
     private readonly IInviteClipboard? _inviteClipboard;
 
     public SimpleForm(IAutomaticRoutes? routes = null, IAutomaticMeter? meter = null, IRecoveryStore? store = null, GameLibrary? library = null,
-        IConnectionSession? connectionSession = null, Action<string>? connectionUrl = null, IReadOnlyList<GameProfile>? startupProfiles = null, IInviteClipboard? inviteClipboard = null, IDeviceProfileStore? deviceStore = null)
+        IConnectionSession? connectionSession = null, Action<string>? connectionUrl = null, IReadOnlyList<GameProfile>? startupProfiles = null, IInviteClipboard? inviteClipboard = null, IDeviceProfileStore? deviceStore = null, IBridgeOffers? bridgeOffers = null)
     {
         _controlled = routes is not null;
         _deviceStore = deviceStore ?? (_controlled ? new MemoryDeviceProfileStore() : new DeviceProfileStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "device.json")));
@@ -53,6 +58,9 @@ internal sealed partial class SimpleForm : Form
         _meter = new DiagramMeter(this, meter ?? new AutomaticMeter(new IcmpProbe(), new WindowsRouteObserver(), _client));
         _store = store ?? new FileRecoveryStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "connection-recovery.json"));
         _lease = new(_routes, _store);
+        _bridgeOffers = bridgeOffers ?? (_controlled ? new SmokeBridgeOffers() : _client);
+        _bridgeStore = _controlled ? new MemoryBridgeOfferStore() : new FileBridgeOfferStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "bridge-recovery.json"));
+        _bridgeLease = new(_bridgeOffers, _bridgeStore);
         _library = library ?? new GameLibrary(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame", "games.json"));
         BuildDashboard();
         ConfigureDevices();
@@ -85,7 +93,7 @@ internal sealed partial class SimpleForm : Form
 
     private bool HasRecovery()
     {
-        try { return _store.Load() is not null; }
+        try { return _store.Load() is not null || _bridgeStore.Load() is not null; }
         catch { _message.Text = "Não foi possível ler a recuperação da conexão. Use Preparar conexão para conferir o caminho ativo."; return true; }
     }
 
@@ -96,7 +104,7 @@ internal sealed partial class SimpleForm : Form
         _game.Enabled = _play.Checked; _game.Visible = !_active; _lockedGame.Visible = _active; _lockedGame.Text = _host.Checked ? "Ponte deste computador" : _game.Text;
         _play.AutoCheck = _host.AutoCheck = !_active && _connectionPage?.Busy != true;
         _setup.Enabled = (!_active || _offering) && !_restoring;
-        _connectionPage?.SetOffering(_offering, _active || _restoring);
+        _connectionPage?.SetOffering(_offering, _active || _restoring, _bridgeReadiness == BridgeReadiness.Confirming);
         _export.Enabled = _report is not null;
         _activate.Text = _starting ? "Verificando…" : _restoring ? "Desativando…" : _active || _offering ? "■  Desativar" : HasRecovery() ? "Restaurar conexão" : _device.Role == DeviceRole.Unknown ? "Conectar este PC" : _host.Checked ? "▶  Ativar ponte" : "▶  Ativar conexão";
         ((DashboardButton)_activate).SelectedStyle = _active; _activate.Font = FontAssets.Title(19);
@@ -115,21 +123,13 @@ internal sealed partial class SimpleForm : Form
             if (_host.Checked)
             {
                 _state.Text = "Preparando este PC como ponte…";
-                var ready = await _client.StatusAsync(_cts.Token);
-                if (ready.State != "Running") throw new InvalidOperationException("Abra Preparar conexão e entre na conta antes de ativar a ponte.");
                 // Mark the intended offer before the command: cancellation can
                 // arrive after the service changed but before the CLI returned.
                 _offering = true;
-                await _client.OfferBridgeAsync(true, _cts.Token);
-                var status = await _client.StatusAsync(_cts.Token);
-                _state.Text = status.SelfApproved ? "Ponte disponível" : "Falta autorizar este PC uma vez";
-                _path.Text = "Ponte: " + status.SelfName;
-                _message.Text = "Este PC deve ficar ligado. Seu amigo pode clicar em Ativar no computador dele.";
-                if (!status.SelfApproved)
-                {
-                    _message.Text = "Conclua a permissão inicial na tela de conexão. Ela avança sozinha quando a ponte ficar autorizada.";
-                    ShowConnectionPage(ConnectionSection.AuthorizeBridge);
-                }
+                _bridgeStartedAt = DateTimeOffset.UtcNow;
+                var offer = await _bridgeLease.BeginAsync(_cts.Token);
+                _path.Text = "Ponte: " + _device.Name;
+                UpdateBridgeAvailability(offer.Running, offer.Approved);
                 return;
             }
             await RunPlayerLoopAsync(forced, settings, smoke);
@@ -156,9 +156,10 @@ internal sealed partial class SimpleForm : Form
             if (_operation is not null) await _operation;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             await _lease.RestoreAsync(timeout.Token);
-            if (_offering) { await _client.OfferBridgeAsync(false, timeout.Token); _offering = false; }
+            await _bridgeLease.RestoreAsync(timeout.Token); _offering = false; _bridgeReadiness = BridgeReadiness.Inactive;
             _active = false; _state.Text = "Desativado"; _path.Text = "Caminho anterior restaurado";
             _message.Text = "A medição parou e as alterações de conexão desta sessão foram desfeitas.";
+            if (_device.Role == DeviceRole.Bridge && _bridgeLease.PreservedExisting) _message.Text = "RotaGame parado. A oferta que você já tinha configurado no Tailscale foi preservada.";
         }
         catch (Exception ex) { _message.Text = "Restauração pendente. Tente Desativar novamente. " + ex.Message; }
         finally { _restoring = false; SetControls(); }

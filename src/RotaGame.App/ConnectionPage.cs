@@ -22,12 +22,12 @@ internal sealed class ConnectionPage : DashboardPanel
     private TextBox? _input;
     private DeviceProfile _ownProfile = DeviceProfile.Create();
     private TailStatus? _status;
-    private bool _busy, _reading, _offering, _locked, _playerFound;
+    private bool _busy, _reading, _offering, _locked, _playerFound, _confirming;
     private bool _legacyOpened;
     private string _inviteText = "";
     private ConnectionStep? _shownStep;
     private ConnectionStep Step => ConnectionSteps.Next(_profile().Role, _status?.State == "Running", _offering, _status?.SelfApproved == true,
-        _profile().Role == DeviceRole.Player ? _status?.Peers.Any(p => p.Online && p.Offered) == true : _playerFound);
+        _profile().Role == DeviceRole.Player ? _status?.Peers.Any(p => p.Online && p.Offered) == true : _playerFound, _confirming);
     internal bool Busy => _busy;
     public event EventHandler? BackRequested;
     public event EventHandler? BusyChanged;
@@ -57,7 +57,7 @@ internal sealed class ConnectionPage : DashboardPanel
         RefreshPresentation();
     }
     internal void SelectSection(ConnectionSection section) => RefreshPresentation();
-    internal void SetOffering(bool offering, bool locked = false) { _offering = offering; _locked = locked; RefreshPresentation(); }
+    internal void SetOffering(bool offering, bool locked = false, bool confirming = false) { _offering = offering; _locked = locked; _confirming = confirming; RefreshPresentation(); }
     internal void SetPlayerFound(bool found) { if (_playerFound == found) return; _playerFound = found; RefreshPresentation(); }
     internal void RefreshPresentation()
     {
@@ -66,7 +66,7 @@ internal sealed class ConnectionPage : DashboardPanel
             + (_status?.State == "Running" ? "   ·   Login confirmado ✓" : "");
         _progress.Text = step == ConnectionStep.ChooseRole ? "1  IDENTIFICAR ESTE PC" : step == ConnectionStep.Ready ? "3  PRONTO PARA USAR" : "2  CONECTAR · UMA ETAPA POR VEZ";
         if (_shownStep != step) { _shownStep = step; BuildCard(step); _feedback.Text = step == ConnectionStep.Ready ? "Conexão reconhecida. Nas próximas aberturas, sua função já estará salva." : ""; }
-        if (_next is not null) _next.Enabled = !_busy && (step != ConnectionStep.StartBridge || !_locked);
+        if (_next is not null) _next.Enabled = !_busy && step != ConnectionStep.ConfirmBridge && (step != ConnectionStep.StartBridge || !_locked);
         ArrangeCard();
     }
     private void BuildCard(ConnectionStep step)
@@ -79,6 +79,7 @@ internal sealed class ConnectionPage : DashboardPanel
             ConnectionStep.ChooseRole => ("Qual é a função deste PC?", "Escolha uma vez. O RotaGame vai lembrar nas próximas aberturas."),
             ConnectionStep.SignIn => ("Conecte sua conta", "Clique abaixo, entre com Google ou outro provedor e volte ao RotaGame.\nEsta tela avança sozinha quando a conexão for confirmada."),
             ConnectionStep.StartBridge => ("Seu PC vai oferecer a ponte", "Este é o PC de Cascavel. Ele precisa ficar ligado enquanto seu amigo joga.\nO botão abaixo prepara a ponte automaticamente."),
+            ConnectionStep.ConfirmBridge => ("Confirmando sua ponte", "O Tailscale está atualizando a disponibilidade deste PC.\nSe você já autorizou, não repita o processo: estou verificando automaticamente."),
             ConnectionStep.ApproveBridge => ("Falta uma permissão inicial", "Na página que vai abrir, encontre “" + name + "”.\nAbra Edit route settings / Edit exit node, marque Use as exit node e salve.\nO RotaGame confirma a permissão e avança sozinho."),
             ConnectionStep.ShareBridge => ("Envie o acesso à sua ponte", "Na página oficial, encontre “" + name + "” e escolha Share / Compartilhar.\nMarque Allow use as exit node, copie o link e envie ao seu amigo.\nEle aceita na própria conta. Você não precisa convidá-lo para outra rede."),
             ConnectionStep.AcceptBridge => ("Recebeu o link do seu amigo?", "Cole o link abaixo ou use o botão Colar. Depois aceite na página oficial.\nSua ponte aparece aqui automaticamente, sem trocar de rede."),
@@ -103,7 +104,7 @@ internal sealed class ConnectionPage : DashboardPanel
                 _input = new TextBox { BorderStyle = BorderStyle.None, BackColor = DashboardTheme.Raised, ForeColor = DashboardTheme.Ink, Font = FontAssets.Ui(11), Dock = DockStyle.Fill,
                     PlaceholderText = "Link recebido do seu amigo", Text = _inviteText, AccessibleName = "Convite da ponte" }; field.Controls.Add(_input); _card.AddField(field, 48);
             }
-            var label = step switch { ConnectionStep.SignIn => "Entrar e conectar", ConnectionStep.StartBridge => "Ativar minha ponte", ConnectionStep.ApproveBridge => "Abrir permissão da ponte", ConnectionStep.ShareBridge => "Compartilhar minha ponte", ConnectionStep.AcceptBridge => _legacyOpened ? "Conectar à rede convidada" : "Aceitar convite e conectar", _ => "Voltar ao painel" };
+            var label = step switch { ConnectionStep.SignIn => "Entrar e conectar", ConnectionStep.StartBridge => "Ativar minha ponte", ConnectionStep.ConfirmBridge => "Verificando automaticamente…", ConnectionStep.ApproveBridge => "Abrir permissão da ponte", ConnectionStep.ShareBridge => "Compartilhar minha ponte", ConnectionStep.AcceptBridge => _legacyOpened ? "Conectar à rede convidada" : "Aceitar convite e conectar", _ => "Voltar ao painel" };
             _next = Button(label, true, 310); _next.Height = 54; _next.Click += async (_, _) => await NextAsync(); _card.AddActions(_next);
             if (step == ConnectionStep.AcceptBridge)
             {
@@ -177,7 +178,9 @@ internal sealed class ConnectionPage : DashboardPanel
         if (Step != ConnectionStep.SignIn) throw new InvalidOperationException("Etapa inicial incorreta.");
         await NextAsync(); await Task.Delay(60);
         if (Step != ConnectionStep.StartBridge || !_summary.Text.Contains("Login confirmado")) throw new InvalidOperationException("Login não avançou sozinho.");
-        Capture("wizard-login-confirmed.png"); SetOffering(true);
+        Capture("wizard-login-confirmed.png"); SetOffering(true, true, true);
+        if (Step != ConnectionStep.ConfirmBridge || _next!.Enabled) throw new InvalidOperationException("A propagação inicial foi confundida com falta de permissão.");
+        Capture("wizard-confirming.png"); SetOffering(true);
         if (Step != ConnectionStep.ApproveBridge) throw new InvalidOperationException("Permissão não foi solicitada.");
         Capture("wizard-permission.png"); await NextAsync(); var fake = (SmokeConnectionSession)_session; fake.Approved = true; await RefreshStatusAsync();
         if (Step != ConnectionStep.ShareBridge) throw new InvalidOperationException("Permissão não avançou automaticamente.");

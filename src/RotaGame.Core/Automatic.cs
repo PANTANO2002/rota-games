@@ -110,7 +110,7 @@ public static class AutomaticPolicy
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.8.1";
+    public string Version { get; init; } = "0.8.2";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public required string Game { get; init; }
     public required ObservedDestination Destination { get; init; }
@@ -123,7 +123,7 @@ public sealed class AutomaticReport
 public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter meter, RouteLease lease)
 {
     public async Task<AutomaticReport> ActivateAsync(string game, ObservedDestination destination,
-        ProbeSettings settings, IProgress<string>? status, IProgress<MeasurementProgress>? samples, CancellationToken ct)
+        ProbeSettings settings, IProgress<string>? status, IProgress<MeasurementProgress>? samples, CancellationToken ct, IProgress<string>? diagnosis = null)
     {
         settings.Validate();
         var report = new AutomaticReport { Game = game, Destination = destination };
@@ -132,7 +132,7 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
         {
             status?.Report("Procurando pontes disponíveis…");
             var candidates = (await routes.DiscoverAsync(ct)).Where(c => !c.IsDirect && c.Link is "direct" or "relay").GroupBy(c => c.Id).Select(g => g.First()).Take(8).ToList();
-            if (routes is IRouteDiscoveryDiagnostics diagnostics) report.Notes.AddRange(diagnostics.DiscoveryNotes);
+            if (routes is IRouteDiscoveryDiagnostics diagnostics) foreach (var note in diagnostics.DiscoveryNotes) Note(note);
             status?.Report("Medindo conexão direta…");
             await Measure(RouteOption.Direct);
             if (report.Trials[0].Block.Stats.Received >= 10)
@@ -147,12 +147,12 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
                     {
-                        report.Notes.Add($"{candidate.Name}: {ex.Message}");
+                        Note($"{candidate.Name}: {ex.Message}");
                         await lease.ApplyAsync(RouteOption.Direct, ct);
                     }
                 }
             }
-            else report.Notes.Add("Destino respondeu pouco ou não respondeu a ICMP. Pontes não foram testadas.");
+            else Note("Destino respondeu pouco ou não respondeu a ICMP. Pontes não foram testadas.");
             status?.Report("Confirmando a conexão direta…");
             await Measure(RouteOption.Direct);
             report.Choice = AutomaticPolicy.Choose(report.Trials);
@@ -180,5 +180,6 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
             var block = await meter.MeasureAsync(destination.Ip, option, settings, samples, ct);
             report.Trials.Add(new(option, block));
         }
+        void Note(string note) { report.Notes.Add(note); diagnosis?.Report(note); }
     }
 }

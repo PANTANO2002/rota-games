@@ -34,7 +34,7 @@ internal sealed partial class SimpleForm
     {
         _playerChoice.Click += (_, _) => SelectRole(DeviceRole.Player); _bridgeChoice.Click += (_, _) => SelectRole(DeviceRole.Bridge);
         _state.TextChanged += (_, _) => _quickState.Text = _state.Text;
-        _pickPartner.Click += (_, _) => PickPartner();
+        _pickPartner.Click += (_, _) => { if (_bridgeReadiness == BridgeReadiness.PermissionUnconfirmed) ShowConnectionPage(); else PickPartner(); };
         _play.CheckedChanged += (_, _) => { if (!_active && !_settingRole && _play.Checked) SelectRole(DeviceRole.Player); };
         _host.CheckedChanged += (_, _) => { if (!_active && !_settingRole && _host.Checked) SelectRole(DeviceRole.Bridge); };
         _deviceTimer.Tick += (_, _) => { if (!_deviceBusy) _deviceTask = RefreshDevicesAsync(); };
@@ -66,6 +66,23 @@ internal sealed partial class SimpleForm
         if (_device.Role == DeviceRole.Unknown) _partnerCaption.Text = "A função identifica quem oferece a ponte e quem vai jogar.";
         if (_partner is { } partner) _partnerCaption.Text = "OUTRO PC: " + partner.Frame.Name + (partner.Frame.Role == DeviceRole.Player ? "  ·  JOGADOR / ACRE" : "  ·  PONTE / CASCAVEL") + "  ·  conectado ✓";
         _pickPartner.Visible = _tailStatus?.State == "Running" && _device.Role != DeviceRole.Unknown;
+        _pickPartner.Text = _bridgeReadiness == BridgeReadiness.PermissionUnconfirmed ? "Verificar ponte" : "Escolher PC";
+    }
+    private void UpdateBridgeAvailability(bool running, bool approved)
+    {
+        if (!_offering || _restoring) return;
+        var remote = _partner is { Frame.Role: DeviceRole.Player, Frame.BridgeUsable: true } && DateTimeOffset.UtcNow - _partner.ReceivedAt < TimeSpan.FromSeconds(10);
+        _bridgeReadiness = BridgeConfirmation.Read(_offering, running, approved, remote, DateTimeOffset.UtcNow - _bridgeStartedAt);
+        _state.Text = _bridgeReadiness switch { BridgeReadiness.Ready => "Ponte disponível", BridgeReadiness.Confirming => "Confirmando a ponte…", BridgeReadiness.Disconnected => "Ponte sem conexão com a conta", _ => "Permissão da ponte não confirmada" };
+        if (!_remoteShown) _message.Text = _bridgeReadiness switch
+        {
+            BridgeReadiness.Ready => "Ponte reconhecida. Deixe este PC ligado; o amigo pode ativar a conexão dele.",
+            BridgeReadiness.Confirming => "Se já autorizou, aguarde: verificando a confirmação automaticamente.",
+            BridgeReadiness.Disconnected => "A conta perdeu a conexão. Confira Conta e conexão; a autorização não foi presumida como revogada.",
+            _ => "Ainda sem confirmação do Tailscale. Se já autorizou, não repita: aguarde a sincronização ou use Verificar ponte."
+        };
+        _connectionPage?.SetOffering(true, _active || _restoring, _bridgeReadiness == BridgeReadiness.Confirming);
+        UpdateDeviceLabels();
     }
     private async Task ToggleConnectionAsync()
     {
@@ -101,7 +118,7 @@ internal sealed partial class SimpleForm
             measurements = new(_active && !_restoring, Clean(_state.Text, 180), Clean(_activeProfileId is { } id ? _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? "" : "", 100),
                 _routeMap.Destination?.Ip, current.Id, Clean(current.Name, 100), last?.At, stats.AverageMs, stats.JitterMs, stats.P95Ms, stats.FailurePercent,
                 _chart.Samples.TakeLast(180).Select(s => new GraphPoint(s.At, s.Outcome == ProbeOutcome.Success ? s.RttMs : null, s.Outcome)).ToArray(), rows)
-            { SampleAgeMs = last is null ? null : Math.Max(0, (now - last.At).TotalMilliseconds), Confirmed = views.Any(v => v.Moving) };
+            { SampleAgeMs = last is null ? null : Math.Max(0, (now - last.At).TotalMilliseconds), Confirmed = views.Any(v => v.Moving), Comparing = _active && _report is null && _routeMap.Destination is not null, Explanation = Clean(_report?.Choice?.Reason ?? _message.Text, 500) };
         }
         return new(1, _deviceSession, Interlocked.Increment(ref _frameSequence), _device.DeviceId, _device.Role, Clean(_device.Name, 80), measurements);
     }
@@ -118,9 +135,11 @@ internal sealed partial class SimpleForm
             _tailStatus = _client.Installed ? await _client.StatusAsync(_deviceLifetime.Token) : null;
             if (_tailStatus?.State != "Running")
             {
+                UpdateBridgeAvailability(false, false);
                 await StopPanelAsync(); _partner = null; ClearRemoteView(); _partnerCaption.Text = "Conta ainda não conectada. Use Conectar para continuar."; UpdateDeviceLabels(); return;
             }
             var status = _tailStatus;
+            UpdateBridgeAvailability(true, status.SelfApproved);
             if (_device.Role == DeviceRole.Bridge)
             {
                 if (_panelAddress != status.SelfIp) await StopPanelAsync();
@@ -157,6 +176,7 @@ internal sealed partial class SimpleForm
             if (_device.PartnerNodeId is null && candidates.Length == 1) SaveDevice(_device with { PartnerNodeId = candidates[0].NodeId });
             _partner = candidates.FirstOrDefault(p => p.NodeId == _device.PartnerNodeId);
             _connectionPage?.SetPlayerFound(_partner is { Frame.Role: DeviceRole.Player, Frame.BridgeUsable: true });
+            UpdateBridgeAvailability(true, status.SelfApproved);
             if (_device.Role == DeviceRole.Bridge)
             {
                 if (_partner?.Frame.Measurements is not null) ApplyRemoteView(_partner);
@@ -198,11 +218,13 @@ internal sealed partial class SimpleForm
         var m = partner.Frame.Measurements!; _remoteShown = true;
         _metricTitles[0].Text = m.Active ? "PING MÉDIO · PC DO AMIGO" : "ÚLTIMO PING · PC DO AMIGO";
         _metricTitles[1].Text = "VARIAÇÃO · PC DO AMIGO"; _metricTitles[2].Text = "P95 · PC DO AMIGO"; _metricTitles[3].Text = "FALHAS · PC DO AMIGO";
-        var stale = m.Active && (m.SampleAgeMs is null || m.SampleAgeMs > 5000);
+        var stale = m.Active && (m.SampleAgeMs is null || m.SampleAgeMs + Math.Max(0, (DateTimeOffset.UtcNow - partner.ReceivedAt).TotalMilliseconds) > 5000);
         _metrics[0].Text = N(stale ? null : m.AverageMs) + " ms"; _metrics[1].Text = N(stale ? null : m.JitterMs) + " ms";
         _metrics[2].Text = N(stale ? null : m.P95Ms) + " ms"; _metrics[3].Text = N(stale ? null : m.FailurePercent) + " %";
         _chart.RemotePoints = m.Points; _chart.Invalidate(); _routeMap.Remote = partner;
-        _message.Text = "Medido em " + partner.Frame.Name + ": " + m.State + (partner.Frame.BridgeUsable ? "" : " · o amigo ainda não tem permissão de usar esta ponte.");
+        var thisBridge = _tailStatus?.SelfIp == m.RouteId;
+        _state.Text = !m.Active ? "Amigo conectado · medição parada" : stale ? "Amigo conectado · aguardando medição" : m.RouteId.Length == 0 ? "Amigo na conexão direta" : thisBridge ? m.Comparing ? "Amigo testando esta ponte" : m.Confirmed ? "Esta ponte está em uso pelo amigo" : "Ponte selecionada · aguardando confirmação" : "Amigo usando outro caminho";
+        _message.Text = "Medido em " + partner.Frame.Name + ": " + m.State + (m.Explanation.Length > 0 ? " · " + m.Explanation : "") + (partner.Frame.BridgeUsable ? "" : " · o amigo ainda não tem permissão de usar esta ponte.");
         _table.Rows.Clear(); foreach (var row in m.Routes) _table.Rows.Add(row.Name, N(row.AverageMs), N(row.P95Ms), N(row.JitterMs), N(row.FailurePercent) + "%", row.Selected ? "Usado pelo amigo" : "Comparado no amigo");
         _baseline.Text = "Medições recebidas de " + partner.Frame.Name + " · caminho: " + m.RouteName;
         _table.Visible = _resultScroll.Visible = _table.Rows.Count > 0; _emptyResults.Visible = !_table.Visible; UpdateResultScroll();

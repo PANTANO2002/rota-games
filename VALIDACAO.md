@@ -152,3 +152,10 @@ O instalador 0.8.0 passou na verificação do payload incorporado. O pacote real
 ## Versão 0.8.1 · verificação de túnel intermediário
 
 A CLI Tailscale usa por padrão until-direct=true e pode retornar erro após respostas DERP. A descoberta agora envia --until-direct=false, para aceitar o caminho alcançável e medi-lo. A fixture reproduz o retorno de erro sem a opção e exige a opção para a ponte DERP entrar nos candidatos. Os 74 testes passaram novamente. Verificação somente de leitura com um peer real aprovado retornou resposta e código zero com a opção; naquele momento o link já era direto. Não se afirma teste de jogo real ou comparação real por ponte a partir desse ping.
+## Versão 0.8.2 · oferta, confirmação e uso da ponte
+
+81/81 testes passaram. Novos cenários cobrem três ciclos de ativar/parar preservando uma oferta manual, recuperação após alteração parcial, proteção contra mudança de identidade e manutenção do registro quando não há conexão suficiente para restaurar.
+
+O teste integrado da interface ativou/parou a ponte controlada três vezes sem reescrever a oferta nem abrir autorização. Verificou espera inicial, confirmação tardia, permissão não confirmada sem navegação forçada e retirada apenas da oferta criada pela sessão. A interface diferenciou amigo na direta, testando esta ponte e usando esta ponte. Os dois últimos estados usam fixtures explicitamente controladas; o transporte TCP de medições e o ICMP locais foram reais. Não é uma prova de jogo real entre Acre e Cascavel.
+
+Os cinco modos simple/devices/account/render/update passaram. A interface permaneceu sem rastros após 63 redimensionamentos e sete ciclos maximizar/restaurar; as quatro etapas do assistente mantiveram 0,0000% de diferença entre pixels apresentados e repintura completa. Os números locais não são o ping do Acre.

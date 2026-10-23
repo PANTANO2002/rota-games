@@ -30,13 +30,13 @@ public sealed class MemoryDeviceProfileStore : IDeviceProfileStore
     public void Save(DeviceProfile profile) => _value = profile;
 }
 
-public enum ConnectionStep { ChooseRole, SignIn, StartBridge, ApproveBridge, ShareBridge, AcceptBridge, Ready }
+public enum ConnectionStep { ChooseRole, SignIn, StartBridge, ConfirmBridge, ApproveBridge, ShareBridge, AcceptBridge, Ready }
 public static class ConnectionSteps
 {
-    public static ConnectionStep Next(DeviceRole role, bool connected, bool offering, bool approved, bool partnerFound) =>
+    public static ConnectionStep Next(DeviceRole role, bool connected, bool offering, bool approved, bool partnerFound, bool confirming = false) =>
         role == DeviceRole.Unknown ? ConnectionStep.ChooseRole : !connected ? ConnectionStep.SignIn :
         role == DeviceRole.Player ? partnerFound ? ConnectionStep.Ready : ConnectionStep.AcceptBridge :
-        !offering ? ConnectionStep.StartBridge : !approved ? ConnectionStep.ApproveBridge : partnerFound ? ConnectionStep.Ready : ConnectionStep.ShareBridge;
+        !offering ? ConnectionStep.StartBridge : partnerFound ? ConnectionStep.Ready : !approved ? confirming ? ConnectionStep.ConfirmBridge : ConnectionStep.ApproveBridge : ConnectionStep.ShareBridge;
 }
 public static class ConnectionInvites
 {
@@ -55,6 +55,8 @@ public sealed record SharedMeasurements(bool Active, string State, string Game, 
 {
     public double? SampleAgeMs { get; init; }
     public bool Confirmed { get; init; }
+    public bool Comparing { get; init; }
+    public string Explanation { get; init; } = "";
 }
 public sealed record DeviceFrame(int Protocol, string SessionId, long Sequence, string DeviceId, DeviceRole Role, string Name, SharedMeasurements? Measurements)
 {
@@ -67,7 +69,7 @@ public sealed record DeviceFrame(int Protocol, string SessionId, long Sequence, 
         if (Protocol != 1 || !Guid.TryParse(SessionId, out _) || !Guid.TryParse(DeviceId, out _) || Sequence < 1 || Role is not (DeviceRole.Player or DeviceRole.Bridge)
             || !Text(Name, 80) || string.IsNullOrWhiteSpace(Name)) throw new InvalidDataException("Identificação incompatível.");
         if (Measurements is not { } m) return;
-        if (Role != DeviceRole.Player || !Text(m.State, 180) || !Text(m.Game, 100) || !Text(m.RouteId, 80) || !Text(m.RouteName, 100)
+        if (Role != DeviceRole.Player || !Text(m.State, 180) || !Text(m.Game, 100) || !Text(m.RouteId, 80) || !Text(m.RouteName, 100) || !Text(m.Explanation, 500)
             || m.Target is not null && (!System.Net.IPAddress.TryParse(m.Target, out var target) || target.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
             || !Number(m.AverageMs) || !Number(m.JitterMs) || !Number(m.P95Ms) || !Number(m.FailurePercent, 100) || !Number(m.SampleAgeMs, 1e12)
             || m.Points is null || m.Routes is null || m.Points.Length > 180 || m.Routes.Length > 9

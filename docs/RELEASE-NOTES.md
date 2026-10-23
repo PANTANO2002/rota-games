@@ -1,4 +1,4 @@
-# RotaGame 0.8.1 — PANT_CORE
+# RotaGame 0.8.2 — PANT_CORE
 
 - Duas escolhas grandes: Vou jogar neste PC (Acre) e Este PC é a ponte (Cascavel). A função e o parceiro ficam salvos.
 - Assistente com uma ação por vez, avançando pelo estado real após o login e a permissão. Conta conectada não volta a pedir login.
@@ -13,3 +13,9 @@ Tailscale já usa WireGuard. O login e a permissão inicial de compartilhamento 
 
 Os indicadores são ICMP, podem diferir do contador do jogo e não garantem melhora. A ponte usa saída geral IPv4, sem separar tráfego por jogo. Testes locais cobrem comunicação entre painéis e recuperação de rotas; a nova versão ainda requer validação real entre os dois PCs.
 A verificação do túnel usa --until-direct=false: respostas via DERP são aceitas como conectividade sem exigir P2P. A fixture da CLI reproduz o erro padrão que antes descartava esse caminho.
+
+Correções adicionais da 0.8.2:
+- Ativar a ponte aguarda a confirmação real, sem abrir automaticamente a autorização a cada início. Se a confirmação demorar, o painel distingue espera, conta desconectada e permissão ainda não confirmada.
+- A oferta já configurada no Tailscale não é reescrita nem retirada ao parar o RotaGame. Só a oferta introduzida por esta ativação é desfeita, com registro de recuperação e proteção contra mudança de conta/PC. O painel avisa quando preserva uma configuração anterior.
+- O host distingue amigo na direta, testando esta ponte e ponte em uso; não deduz uso apenas pelo login. Recebe também o motivo da escolha e deixa de mostrar valores atuais quando as mensagens/sondas envelhecem.
+- O motivo de não testar uma ponte aparece durante a análise, sem esperar o relatório terminar. A versão completa aparece na lateral.

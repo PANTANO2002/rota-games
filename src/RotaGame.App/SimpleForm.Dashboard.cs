@@ -71,7 +71,7 @@ internal sealed partial class SimpleForm
         AddNav("⇄", "Usar este PC como ponte", () => { ShowDashboard(); SelectRole(RotaGame.Core.DeviceRole.Bridge); });
         AddNav("⚙", "Conta e conexão", () => _setup.PerformClick());
         AddNav("↻", "Atualizações do RotaGame", ShowUpdates);
-        var version = Label("0.8", 9, Muted); version.Dock = DockStyle.None; version.Size = new Size(52, 30); version.TextAlign = ContentAlignment.MiddleCenter; sidebar.Controls.Add(version);
+        var version = Label(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "", 9, Muted); version.Dock = DockStyle.None; version.Size = new Size(52, 30); version.TextAlign = ContentAlignment.MiddleCenter; sidebar.Controls.Add(version);
         workspace.Controls.Add(sidebar, 0, 0);
         workspace.Controls.Add(_pageHost, 1, 0); _pageHost.Controls.Add(_pageScroll);
         var body = _body; body.Padding = new Padding(24, 10, 24, 16);
@@ -207,11 +207,11 @@ internal sealed partial class SimpleForm
             _connectionPage.PrepareBridgeRequested += (_, _) => { if (!_active) { _host.Checked = true; _operation = ActivateAsync(); } };
             _connectionPage.StatusChanged += status =>
             {
-                if (_offering) { _state.Text = status?.SelfApproved == true ? "Ponte disponível" : "Falta autorizar este PC uma vez"; SyncDashboard(); }
+                UpdateBridgeAvailability(status?.State == "Running", status?.SelfApproved == true);
             };
             _connectionPage.BackRequested += (_, _) => ShowDashboard(); _pageHost.Controls.Add(_connectionPage);
         }
-        _connectionPage.SetOffering(_offering, _active || _restoring); _connectionPage.SelectSection(section);
+        _connectionPage.SetOffering(_offering, _active || _restoring, _bridgeReadiness == RotaGame.Core.BridgeReadiness.Confirming); _connectionPage.SelectSection(section);
         _pageScroll.Visible = false; _connectionPage.Visible = true; _connectionPage.BringToFront(); _search.Enabled = false; Invalidate(true);
     }
     private void ShowDashboard()

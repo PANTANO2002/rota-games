@@ -46,7 +46,7 @@ public sealed record TailStatus(string State, string CurrentExit, bool ExitOnlin
     public string SelfNodeId { get; init; } = "";
 }
 
-public sealed class TailscaleClient(ICommandRunner runner, string? executableOverride = null) : IAutomaticRoutes, IRouteDiscoveryDiagnostics
+public sealed class TailscaleClient(ICommandRunner runner, string? executableOverride = null) : IAutomaticRoutes, IRouteDiscoveryDiagnostics, IBridgeOffers
 {
     private readonly List<string> _discoveryNotes = [];
     public IReadOnlyList<string> DiscoveryNotes => _discoveryNotes;
@@ -170,6 +170,22 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
     {
         var result = await runner.RunAsync(Executable, ["set", "--advertise-exit-node=" + (enable ? "true" : "false")], TimeSpan.FromSeconds(10), ct);
         if (result.ExitCode != 0) throw new InvalidOperationException("Não foi possível preparar este PC como ponte. Entre na conta primeiro.");
+    }
+    public Task SetOfferAsync(bool enabled, CancellationToken ct) => OfferBridgeAsync(enabled, ct);
+    public async Task<BridgeOfferState> ReadOfferAsync(CancellationToken ct)
+    {
+        var status = await StatusAsync(ct);
+        var prefs = await runner.RunAsync(Executable, ["debug", "prefs"], TimeSpan.FromSeconds(8), ct);
+        if (prefs.ExitCode != 0) throw new InvalidOperationException("Não consegui conferir a oferta original da ponte. Nenhuma configuração foi substituída.");
+        return ParseOffer(status, prefs.Output);
+    }
+    public static BridgeOfferState ParseOffer(TailStatus status, string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("AdvertiseRoutes", out var routes) || routes.ValueKind is not (JsonValueKind.Array or JsonValueKind.Null)) throw new InvalidDataException("Oferta original da ponte não reconhecida.");
+        var defaults = routes.ValueKind == JsonValueKind.Array ? routes.EnumerateArray().Select(r => r.GetString()).Where(r => r is "0.0.0.0/0" or "::/0").Distinct().Count() : 0;
+        if (defaults == 1) throw new InvalidOperationException("A oferta tem apenas uma família de IP. Confira o Tailscale antes de permitir alterações pelo RotaGame.");
+        return new(status.SelfNodeId.Length > 0 ? status.SelfNodeId : status.SelfIp, status.State == "Running", defaults == 2, status.SelfApproved);
     }
 }
 

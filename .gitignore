@@ -14,3 +14,4 @@ connection-recovery.json*
 !*.conf.example
 
 device.json*
+bridge-recovery.json*

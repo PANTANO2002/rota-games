@@ -32,7 +32,7 @@ internal sealed partial class SimpleForm
             _routeMap.Destination = destination; _routeMap.Report = null; SyncDashboard();
             _destination.Text = smoke ? "Validação local: estes valores não representam a conexão do Acre." : $"Destino observado em {destination.ProcessName}. A região é escolhida no jogo.";
             _report = await new AutomaticOptimizer(_routes, _meter, _lease).ActivateAsync(destination.ProcessName, destination,
-                settings ?? new ProbeSettings(24, 1000, 1000, 32, 2), status, samples, ct);
+                settings ?? new ProbeSettings(24, 1000, 1000, 32, 2), status, samples, ct, new Inline<string>(s => _message.Text = s));
             _selected = _report.Choice!.Winner; RefreshResult(); SetControls();
             _state.Text = smoke ? "Validação local · conexão direta" : "Ativo · " + _selected.Name;
             _path.Text = "Caminho: " + _selected.Name; _message.Text = _report.Choice.Reason; ClearLive();
