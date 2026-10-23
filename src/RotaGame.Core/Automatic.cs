@@ -110,7 +110,7 @@ public static class AutomaticPolicy
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.8.0";
+    public string Version { get; init; } = "0.8.1";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public required string Game { get; init; }
     public required ObservedDestination Destination { get; init; }

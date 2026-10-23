@@ -243,7 +243,9 @@ internal static class AutomaticTests
         {
             var a = args.ToArray(); ct.ThrowIfCancellationRequested();
             if (a[0] == "set") { Mutations.Add(a[1]); _selected = a[1]["--exit-node=".Length..]; return Task.FromResult(new CommandResult(0, "", "")); }
-            if (a[0] == "ping") return Task.FromResult(new CommandResult(0, "controlled ping fixture", ""));
+            if (a[0] == "ping") return Task.FromResult(a.Contains("--until-direct=false") || a[^1] == Bridge.Id
+                ? new CommandResult(0, "controlled ping fixture", "")
+                : new CommandResult(1, "pong via DERP", "direct connection not established"));
             var exit = _selected.Length == 0 ? "null" : JsonSerializer.Serialize(new { TailscaleIPs = new[] { _selected + "/32" }, Online = true });
             var json = """{"BackendState":"Running","Self":{"HostName":"test"},"ExitNodeStatus":EXIT,"Peer":{"a":{"TailscaleIPs":["100.70.0.2"],"HostName":"home","Online":true,"ExitNodeOption":true,"CurAddr":"1.2.3.4:1"},"b":{"TailscaleIPs":["100.70.0.3"],"Online":false,"ExitNodeOption":true},"c":{"TailscaleIPs":["100.70.0.4"],"Online":true,"ExitNodeOption":true,"Relay":"gru"}}} """.Replace("EXIT", exit);
             return Task.FromResult(new CommandResult(0, json, ""));

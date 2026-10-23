@@ -1,7 +1,7 @@
 param(
     [string]$DotNet = 'dotnet',
     [string]$VpkDll = '',
-    [string]$Version = '0.8.0',
+    [string]$Version = '0.8.1',
     [string]$OutputDir = (Join-Path $PSScriptRoot 'Releases')
 )
 $ErrorActionPreference = 'Stop'

@@ -118,7 +118,9 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
             ct.ThrowIfCancellationRequested();
             try
             {
-                var ping = await runner.RunAsync(Executable, ["ping", "--c=3", "--timeout=2s", candidate.Ip], TimeSpan.FromSeconds(10), ct);
+                // The CLI defaults to returning an error when only DERP was
+                // reached. A reachable relay is a valid path to measure too.
+                var ping = await runner.RunAsync(Executable, ["ping", "--until-direct=false", "--c=3", "--timeout=2s", candidate.Ip], TimeSpan.FromSeconds(10), ct);
                 if (ping.ExitCode != 0) { _discoveryNotes.Add(candidate.Name + ": não respondeu à verificação do túnel."); continue; }
             }
             catch (TimeoutException) { _discoveryNotes.Add(candidate.Name + ": demorou para responder à verificação do túnel."); continue; }

@@ -12,3 +12,5 @@ connection-recovery.json*
 *.user
 *.conf
 !*.conf.example
+
+device.json*
