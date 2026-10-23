@@ -34,11 +34,20 @@ internal sealed partial class SimpleForm
             RequestPath(null);
             await Until(() => _report?.ManualSelection == false && _report.Choice is not null && !_comparingPaths && _rolling.Count > 0, "Voltar ao automático não refez a comparação.");
             Check(_report!.Choice!.Winner.Id == PathSmokeRoutes.Bridge.Id, "A fixture automática não escolheu a ponte prevista.");
+            meter.DirectRtt = 99; meter.BridgeRtt = 134;
+            var previous = _report; RequestPath(null);
+            await Until(() => !ReferenceEquals(_report, previous) && _report?.Choice is not null && !_comparingPaths && _rolling.Count > 0, "Reavaliar no automático não concluiu o novo teste.");
+            Check(_selected.IsDirect && routes.Selected == "" && _report!.Choice!.Winner.IsDirect && _report.Choice.Assessments.Single().Reason.Contains("não foi menor"), "A ponte pior deveria manter a direta, com explicação.");
+            Check(_routeMap.Snapshot(DateTimeOffset.UtcNow).Any(v => !v.Route.IsDirect && v.Detail.StartsWith("Último teste")), "O ping da rota não ativa parece uma medição ao vivo.");
+            using (var image = new Bitmap(Width, Height)) { DrawToBitmap(image, ClientRectangle); image.Save(Path.Combine(directory, "automatico-direta-simulado.png")); }
+            meter.BridgeRtt = 96; previous = _report; RequestPath(null);
+            await Until(() => !ReferenceEquals(_report, previous) && _report?.Choice is not null && !_comparingPaths && _rolling.Count > 0, "Novo teste de ganho pequeno não terminou.");
+            Check(_selected.Id == PathSmokeRoutes.Bridge.Id && _report!.Choice!.WinnerStats.AverageMs == 96, "Ganho pequeno e repetido deveria escolher a ponte de menor ping.");
             routes.FailNextBridge = true; RequestPath(PathSmokeRoutes.Bridge);
             await Until(() => !_active, "Falha de aplicação não encerrou a operação com recuperação.");
             Check(routes.Selected == "" && !HasRecovery(), "Falha manual não restaurou a preferência anterior.");
             await DeactivateAsync();
-            File.WriteAllText(Path.Combine(directory, "paths-smoke.txt"), "PASS: botão real do seletor aplica ponte durante a comparação, cancelando apenas o caminho anterior; monitoramento permanece ativo; escolha manual e relatório identificados; ICMP sem resposta mantém a escolha manual; troca para direta e retorno ao automático; falha de aplicação restaura a preferência anterior. Dados de rotas e ping simulados e identificados; nenhuma rede real alterada.\n");
+            File.WriteAllText(Path.Combine(directory, "paths-smoke.txt"), "PASS: seleção manual de ponte/direta durante a comparação e monitoramento; ICMP sem resposta mantém a escolha manual; retorno ao automático refaz os testes; direta 99 / ponte 134 escolhe direta; direta 99 / ponte 96 escolhe ponte; valores de rotas não ativas identificados como último teste; falha parcial restaura a preferência anterior. Rotas e pings simulados e identificados; nenhuma rede real alterada.\n");
         }
         finally { _routeMap.PreviewLabel = null; await DeactivateAsync(); TopMost = false; }
         async Task Until(Func<bool> condition, string error, int seconds = 6)
@@ -61,6 +70,7 @@ internal sealed class PathSmokeMeter : IAutomaticMeter
 {
     internal TaskCompletionSource FirstProbe { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal bool Timeouts; internal int Failed;
+    internal double DirectRtt = 110, BridgeRtt = 70;
     public async Task<MeasurementBlock> MeasureAsync(string target, RouteOption route, ProbeSettings settings, IProgress<MeasurementProgress>? progress, CancellationToken ct)
     {
         var block = new MeasurementBlock { TargetIp = target, Path = PathKind.Diagnostic, Settings = settings };
@@ -68,7 +78,7 @@ internal sealed class PathSmokeMeter : IAutomaticMeter
         {
             await Task.Delay(25, ct); var now = DateTimeOffset.UtcNow;
             var snapshot = new RouteSnapshot(77, route.IsDirect ? "fixture-physical" : "fixture-tunnel", route.IsDirect ? "Interface física de teste" : "Tailscale de teste", "Dados simulados", "", "0.0.0.0/0", !route.IsDirect, route.IsDirect, now);
-            var sample = new Sample(i, now, Timeouts ? ProbeOutcome.Timeout : ProbeOutcome.Success, Timeouts ? null : route.IsDirect ? 110 : 70, "Dado simulado para testar seleção", snapshot, snapshot);
+            var sample = new Sample(i, now, Timeouts ? ProbeOutcome.Timeout : ProbeOutcome.Success, Timeouts ? null : route.IsDirect ? DirectRtt : BridgeRtt, "Dado simulado para testar seleção", snapshot, snapshot);
             if (Timeouts) Failed++; block.Samples.Add(sample); progress?.Report(new(block, sample, "Teste controlado")); FirstProbe.TrySetResult();
         }
         block.Status = "complete"; block.EndedAt = DateTimeOffset.UtcNow; return block;

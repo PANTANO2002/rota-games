@@ -39,11 +39,13 @@ No computador do amigo, abra o jogo, entre em treino e clique **Ativar**, manten
 3. Descobre até oito pontes autorizadas e online na rede privada.
 4. Tenta estabelecer ligação direta entre os PCs. Pontes via DERP também são medidas e identificadas como intermediário; peer relay continua excluído.
 5. Mede direta, dois blocos de cada ponte elegível, e direta novamente.
-6. Escolhe a direta ou uma ponte com vantagem suficiente e começa a monitorar.
+6. Escolhe o menor ping médio confirmado dentro dos limites de qualidade e começa a monitorar.
 
 São 24 sondas por bloco, intervalo mínimo 1 segundo, timeout 1 segundo, payload 32 bytes e 2 aquecimentos fora das estatísticas. Uma sondagem lenta não causa rajadas para compensar o atraso.
 
-Cada caminho precisa ter ao menos 20 respostas. A ponte deve melhorar a média e reduzir a mediana por max(5 ms, 5% da direta), sem piorar p95/falhas e sem elevar jitter mais de 3 ms. A decisão é exploratória, sem cálculo de significância estatística. Se a evidência não bastar, mantém a direta. Resultados de alvos/ajustes distintos e mudança da interface direta não produzem escolha de ponte.
+Cada caminho precisa ter ao menos dois blocos distintos, com pelo menos 10 respostas por bloco e 20 no total. A média de cada bloco da ponte deve ficar abaixo da menor média dos blocos diretos. Entre elegíveis, ganha a menor média, sem piorar p95/falhas e sem elevar jitter mais de 3 ms. Ganhos pequenos e repetidos podem vencer: não há corte fixo de 5 ms ou 5%. A decisão é exploratória, sem cálculo de significância estatística. Empate ou evidência insuficiente mantêm a direta. Resultados de alvos/ajustes distintos, mudança da interface direta e mudança do tipo de túnel não produzem escolha de ponte.
+
+O painel informa o horário do teste e o motivo de uma ponte não ser escolhida. Somente o caminho ativo é medido ao vivo; os outros mostram o último teste. Para repetir, clique no diagrama e selecione **Automático · menor ping confirmado** novamente.
 
 O app compara somente caminhos disponíveis: não tem servidores públicos próprios, não controla as rotas internas da operadora e não muda o matchmaking. A região/servidor continua sendo escolhido no jogo.
 

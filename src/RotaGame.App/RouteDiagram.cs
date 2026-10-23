@@ -133,8 +133,9 @@ internal sealed class RouteDiagram : Control
                 var moving = fresh && _verified && _sample!.Outcome == ProbeOutcome.Success && (_selected is null || selected);
                 var stats = _blocks.TryGetValue(route.Id, out var blocks) ? Statistics.Combine(blocks) : Statistics.From([]);
                 var value = live ? fresh && _verified && _sample!.Outcome == ProbeOutcome.Success ? _live?.AverageMs : null : stats.AverageMs;
+                var lastTest = blocks?.Select(b => (DateTimeOffset?)(b.EndedAt ?? b.StartedAt)).Max();
                 var detail = live ? !fresh ? "Aguardando sonda" : !_verified ? "Rota sem confirmação" : _sample!.Outcome != ProbeOutcome.Success
-                    ? "Sem resposta" : $"Média ao vivo · {_live?.Attempts ?? 0} sondas" : stats.Attempts > 0 ? $"Comparação · {stats.Received} respostas" : "Aguardando medição";
+                    ? "Sem resposta" : $"Média ao vivo · {_live?.Attempts ?? 0} sondas" : stats.Attempts > 0 ? $"Último teste {lastTest?.ToLocalTime():HH:mm}" : "Aguardando medição";
                 var badge = selected ? _active ? ManualSelection ? "MANUAL · EM USO" : "EM USO" : "ÚLTIMA ROTA" : _active && _selected is null && route.Id == _current?.Id ? "EM TESTE" : stats.Attempts > 0 ? "COMPARADA" : "";
                 return new DiagramRouteView(route, value.HasValue ? value.Value.ToString("0.0") + " ms" : "—", detail, badge, selected, moving);
             }).ToArray();

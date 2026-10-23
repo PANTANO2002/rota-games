@@ -66,7 +66,7 @@ internal sealed partial class SimpleForm : Form
         ConfigureDevices();
         _tips.SetToolTip(_metrics[0], "Média das últimas 30 sondas respondidas no caminho atual. Atualizada a cada resposta; não é o contador interno do jogo.");
         _tips.SetToolTip(_metrics[3], "Falhas de sondas ICMP podem ser filtragem do destino; não comprovam perda dos pacotes do jogo.");
-        _tips.SetToolTip(_routeMap, "Clique no diagrama para escolher direta, ponte ou automático. Ping: média ICMP do caminho completo; animações ilustrativas.");
+        _tips.SetToolTip(_routeMap, "Clique para escolher automática pelo menor ping, direta ou ponte manual. O caminho ativo é medido ao vivo; os demais mostram o último teste. Ping ICMP do caminho completo; animações ilustrativas.");
         _activate.Click += async (_, _) => await ToggleConnectionAsync();
         _deactivate.Click += async (_, _) => await DeactivateAsync();
         _setup.Click += (_, _) => ShowConnectionPage();
@@ -198,14 +198,19 @@ internal sealed partial class SimpleForm : Form
         {
             var gain = choice.DirectStats.AverageMs - choice.WinnerStats.AverageMs;
             var difference = !gain.HasValue ? "sem medição suficiente" : Math.Abs(gain.Value) < .1 ? "sem diferença" : gain.Value.ToString("0.0") + " ms menor";
-            _baseline.Text = $"Direta: {N(choice.DirectStats.AverageMs)} ms   ·   Escolhida: {N(choice.WinnerStats.AverageMs)} ms   ·   {difference}";
+            var at = (_report.CompletedAt ?? _report.CreatedAt).ToLocalTime();
+            _baseline.Text = $"Teste {at:HH:mm} · Direta: {N(choice.DirectStats.AverageMs)} ms · Escolhida: {N(choice.WinnerStats.AverageMs)} ms · {difference}";
         }
         _table.Rows.Clear();
         foreach (var group in _report.Trials.GroupBy(t => t.Route.Id))
         {
             var stats = Statistics.Combine(group.Select(t => t.Block));
             var option = group.First().Route;
-            _table.Rows.Add(option.Name, N(stats.AverageMs), N(stats.P95Ms), N(stats.JitterMs), N(stats.FailurePercent) + "%", option.Id == _selected.Id ? _report.ManualSelection ? "Manual · em uso" : "Escolhido" : "Comparado");
+            var assessment = _report.Choice?.Assessments.FirstOrDefault(a => a.Route.Id == option.Id);
+            var selected = option.Id == _selected.Id;
+            var row = _table.Rows.Add(option.Name, N(stats.AverageMs), N(stats.P95Ms), N(stats.JitterMs), N(stats.FailurePercent) + "%", selected ? _report.ManualSelection ? "Manual · em uso" : "Escolhido" : assessment?.Eligible == false ? "Não escolhido" : "Comparado");
+            var explanation = assessment?.Reason ?? (selected ? _report.Choice?.Reason : null);
+            _table.Rows[row].Cells[5].ToolTipText = explanation ?? "Resultado do último teste, não é uma medição simultânea ao caminho atual.";
         }
     }
 

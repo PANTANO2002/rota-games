@@ -69,7 +69,7 @@ internal sealed class PathChoiceWindow : Form
         body.Controls.Add(new Label { Text = "A escolha será aplicada no PC que vai jogar.", Dock = DockStyle.Fill, Font = FontAssets.Ui(10), ForeColor = DashboardTheme.Muted }, 0, 1);
         var rows = new DashboardTableLayout { ColumnCount = 1, RowCount = options.Count + 1 };
         rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); var scroll = new DashboardScrollHost(false) { Dock = DockStyle.Fill }; scroll.SetContent(rows); scroll.SetExtent((options.Count + 1) * 53); body.Controls.Add(scroll, 0, 2);
-        Add("Automático · escolher pelo teste", null, manual is null);
+        Add("Automático · menor ping confirmado", null, manual is null);
         foreach (var option in options) Add(option.Name + (current?.Id == option.Id ? "  ·  caminho atual" : ""), option, manual?.Id == option.Id);
         body.Controls.Add(new Label { Text = "Trocar o caminho pode reconectar a partida.\nVocê pode voltar ao automático a qualquer momento.", Dock = DockStyle.Fill, Font = FontAssets.Ui(10), ForeColor = DashboardTheme.Muted, TextAlign = ContentAlignment.MiddleLeft }, 0, 3);
         var close = new DashboardWindowButton(DashboardWindowAction.Close) { Size = new Size(32, 32), Location = new Point(445, 8), AccessibleName = "Fechar escolha de caminho" }; close.Click += (_, _) => Close(); Controls.Add(close); close.BringToFront();

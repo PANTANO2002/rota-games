@@ -28,8 +28,40 @@ internal static class AutomaticTests
         void Test(string name, Action action) => list.Add((name, () => { action(); return Task.CompletedTask; }));
         void Async(string name, Func<Task> action) => list.Add((name, action));
         Test("AUTO: selects an adequately faster bridge", () => Check(AutomaticPolicy.Choose(Trials()).Winner == Bridge));
-        Test("AUTO: small differences retain direct", () => Check(AutomaticPolicy.Choose(Trials(100, 97)).Winner.IsDirect));
-        Test("AUTO: relatively tiny improvements retain direct", () => Check(AutomaticPolicy.Choose(Trials(400, 390)).Winner.IsDirect));
+        Test("AUTO: a small repeatable improvement selects the lower mean", () => Check(AutomaticPolicy.Choose(Trials(100, 97)).Winner == Bridge));
+        Test("AUTO: no five-percent threshold hides a lower confirmed mean", () => Check(AutomaticPolicy.Choose(Trials(400, 390)).Winner == Bridge));
+        Test("AUTO: worse bridge selects direct and explains why", () =>
+        {
+            var choice = AutomaticPolicy.Choose(Trials(99, 134));
+            Check(choice.Winner.IsDirect && choice.Assessments.Count == 1 && !choice.Assessments[0].Eligible && choice.Assessments[0].Reason.Contains("não foi menor"));
+        });
+        Test("AUTO: an exact latency tie keeps direct", () => Check(AutomaticPolicy.Choose(Trials(100, 100)).Winner.IsDirect));
+        Test("AUTO: minimum mean wins instead of the old weighted score", () =>
+        {
+            var t = Trials(); t[1] = new(Bridge, Block(50, tail: 100)); t[2] = new(Bridge, Block(50, tail: 100));
+            var second = new RouteOption("100.70.0.3", "Bridge with lower p95 but higher mean");
+            t.Insert(3, new(second, Block(60))); t.Insert(4, new(second, Block(60)));
+            var choice = AutomaticPolicy.Choose(t); Check(choice.Winner == Bridge && choice.Assessments.All(a => a.Eligible));
+            Check(AutomaticPolicy.Choose(t.AsEnumerable().Reverse()).Winner == Bridge);
+        });
+        Test("AUTO: a single lucky block cannot produce a lower-ping winner", () =>
+        {
+            var t = Trials(); t[1] = new(Bridge, Block(10)); t[2] = new(Bridge, Block(110));
+            var choice = AutomaticPolicy.Choose(t); Check(choice.Winner.IsDirect && choice.Assessments.Single().Reason.Contains("não se repetiu"));
+        });
+        Test("AUTO: baseline drift does not look like a confirmed improvement", () =>
+        {
+            var t = Trials(100, 94); t[3] = new(RouteOption.Direct, Block(90));
+            Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
+        });
+        Test("AUTO: duplicate block cannot substitute a second measurement", () =>
+        {
+            var t = Trials(); t[2] = t[1]; Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
+        });
+        Test("AUTO: changing the tunnel type requires a new comparison", () =>
+        {
+            var t = Trials(); t[2] = t[2] with { Route = Bridge with { Link = "relay" } }; Check(AutomaticPolicy.Choose(t).Winner.IsDirect);
+        });
         Test("AUTO: a lower median cannot hide a worse mean", () =>
         {
             var t = Trials(); t[0] = new(RouteOption.Direct, Block(0, alternating: 200)); t[3] = new(RouteOption.Direct, Block(0, alternating: 200));
@@ -92,7 +124,7 @@ internal static class AutomaticTests
         {
             var routes = new FakeAutomaticRoutes([Bridge]); var store = new MemoryStore(); var lease = new RouteLease(routes, store);
             var report = await new AutomaticOptimizer(routes, new FakeAutomaticMeter(), lease).ActivateAsync("Test", Destination(), new(24, 100, 100, 32, 0), null, null, default);
-            Check(report.Trials.Count == 4 && report.Choice?.Winner == Bridge && routes.Current == Bridge.Id);
+            Check(report.Trials.Count == 4 && report.Choice?.Winner == Bridge && routes.Current == Bridge.Id && report.CompletedAt >= report.CreatedAt);
             await lease.RestoreAsync(default); Check(routes.Current == "" && store.Value is null);
         });
         Async("AUTO: no bridge is a functional direct-only activation", async () =>

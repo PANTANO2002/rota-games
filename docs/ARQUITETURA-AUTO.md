@@ -67,7 +67,9 @@ O estado da seleção/peer é conferido antes/depois do bloco. A rota IPv4 local
 
 A média atual usa as últimas 30 tentativas do caminho. Sem resposta não vira zero; falhas ficam no cálculo de falhas aparentes. A janela é limpa ao mudar de bloco/caminho. O jitter combinado não cria pares entre blocos. A tabela guarda média, p95, jitter e falhas; a faixa de comparação mostra as médias iniciais.
 
-A política exige melhora de mediana max(5 ms, 5%), sem piora de p95/falhas e com tolerância de +3 ms no jitter. Entre elegíveis, usa mediana + 0,25 × p95 + 0,1 × jitter para ordenar. Não há significância estatística formal. O destino e os ajustes precisam coincidir, e a rota direta deve permanecer consistente entre seus blocos.
+A política 0.8.4 ordena os caminhos elegíveis pela menor média ICMP, sem o corte anterior de 5 ms / 5% e sem pontuação composta. A ponte precisa ter pelo menos dois blocos distintos, ao menos 10 respostas em cada bloco e 20 no total, com média de cada bloco menor que a menor média dos blocos diretos. Isso evita chamar um único período favorável de melhora repetida. Exige p95/falhas sem piora e tolera até +3 ms de jitter. Empates mantêm a direta. O destino e os ajustes precisam coincidir, e a interface direta deve permanecer consistente. Mudança do tipo de túnel entre blocos exclui a ponte. Não há significância estatística formal nem garantia de que a rota continuará melhor.
+
+O relatório guarda o horário de conclusão e uma avaliação por ponte com o motivo da elegibilidade. O painel marca as rotas inativas como último teste, separado do monitor ao vivo. Selecionar Automático novamente refaz a comparação completa, com restauração da sessão anterior antes das novas medições.
 
 Pontos de saída Windows Tailscale usam roteamento userspace. Para ICMP, o peer pode emitir sua própria sonda ao destino e responder à original quando sua sonda sucede. É diagnóstico aproximado do caminho completo, não RTT/perda dos datagramas UDP do jogo. A validação na telemetria interna do jogo é necessária.
 

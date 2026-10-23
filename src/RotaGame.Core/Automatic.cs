@@ -71,16 +71,21 @@ public sealed class RouteLease(IAutomaticRoutes routes, IRecoveryStore store)
 }
 
 public sealed record RouteTrial(RouteOption Route, MeasurementBlock Block);
-public sealed record AutomaticChoice(RouteOption Winner, string Reason, Statistics DirectStats, Statistics WinnerStats);
+public sealed record RouteAssessment(RouteOption Route, Statistics Stats, bool Eligible, string Reason);
+public sealed record AutomaticChoice(RouteOption Winner, string Reason, Statistics DirectStats, Statistics WinnerStats)
+{
+    public IReadOnlyList<RouteAssessment> Assessments { get; init; } = [];
+}
 
 public static class AutomaticPolicy
 {
     public static AutomaticChoice Choose(IEnumerable<RouteTrial> input)
     {
-        var trials = input.Where(t => t.Block.Status == "complete" && t.Block.Samples.Count == t.Block.Settings.Count && t.Block.Stats.LocalErrors == 0).ToList();
+        var entries = input.ToList();
+        var trials = entries.Where(t => t.Block.Status == "complete" && t.Block.Samples.Count == t.Block.Settings.Count && t.Block.Stats.LocalErrors == 0).DistinctBy(t => t.Block.Id).ToList();
         var directBlocks = trials.Where(t => t.Route.IsDirect).Select(t => t.Block).ToList();
         var baseline = Statistics.Combine(directBlocks);
-        if (directBlocks.Count < 2 || baseline.Received < 20 || baseline.MedianMs is null)
+        if (directBlocks.Count < 2 || directBlocks.Any(b => b.Stats.Received < 10) || baseline.Received < 20 || baseline.MedianMs is null)
             return new(RouteOption.Direct, "Sem respostas suficientes para escolher uma ponte. Conexão direta mantida.", baseline, baseline);
         var reference = directBlocks[0];
         var directFingerprint = reference.Samples[0].RouteBefore.Fingerprint;
@@ -88,34 +93,40 @@ public static class AutomaticPolicy
             b.Samples.Any(s => s.RouteBefore.Fingerprint != directFingerprint || s.RouteAfter.Fingerprint != directFingerprint)))
             return new(RouteOption.Direct, "A conexão direta mudou durante os testes. Conexão direta mantida sem concluir sobre as pontes.", baseline, baseline);
         var winner = RouteOption.Direct; var best = baseline;
-        foreach (var group in trials.Where(t => !t.Route.IsDirect && t.Route.Link is "direct" or "relay").GroupBy(t => t.Route.Id))
+        var assessments = new List<RouteAssessment>();
+        foreach (var group in entries.Where(t => !t.Route.IsDirect).GroupBy(t => t.Route.Id))
         {
-            if (group.Count() < 2) continue;
-            if (group.Any(t => t.Block.TargetIp != reference.TargetIp || t.Block.Settings != reference.Settings)) continue;
-            var stats = Statistics.Combine(group.Select(t => t.Block));
-            if (stats.Received < 20 || stats.MedianMs is null || stats.P95Ms is null || stats.FailurePercent is null) continue;
-            var improvement = baseline.MedianMs.Value - stats.MedianMs.Value;
-            if (improvement < Math.Max(5, baseline.MedianMs.Value * .05) || stats.AverageMs >= baseline.AverageMs || stats.P95Ms > baseline.P95Ms ||
-                stats.FailurePercent > baseline.FailurePercent ||
-                (stats.JitterMs.HasValue && baseline.JitterMs.HasValue && stats.JitterMs > baseline.JitterMs + 3)) continue;
-            if (winner.IsDirect || Score(stats) < Score(best)) { winner = group.First().Route; best = stats; }
+            var route = group.First().Route;
+            var measured = trials.Where(t => t.Route.Id == group.Key).ToList();
+            var stats = Statistics.Combine(measured.Select(t => t.Block));
+            string? rejection = null;
+            if (route.Link is not ("direct" or "relay") || group.Any(t => t.Route.Link != route.Link)) rejection = "O tipo de túnel não foi confirmado ou mudou entre os testes.";
+            else if (measured.Count < 2 || stats.Received < 20 || measured.Any(t => t.Block.Stats.Received < 10) || stats.AverageMs is null || stats.MedianMs is null || stats.P95Ms is null || stats.FailurePercent is null) rejection = "Medições completas ou respostas insuficientes.";
+            else if (measured.Any(t => t.Block.TargetIp != reference.TargetIp || t.Block.Settings != reference.Settings)) rejection = "Destino ou condições de medição diferentes da conexão direta.";
+            else if (stats.AverageMs >= baseline.AverageMs) rejection = "O ping médio não foi menor que o da conexão direta.";
+            else if (measured.Any(t => t.Block.Stats.AverageMs >= directBlocks.Min(b => b.Stats.AverageMs))) rejection = "A melhora não se repetiu nos dois testes; a comparação ficou inconclusiva.";
+            else if (stats.P95Ms > baseline.P95Ms) rejection = "O ping médio caiu, mas os picos de latência aumentaram.";
+            else if (stats.FailurePercent > baseline.FailurePercent) rejection = "O ping médio caiu, mas as falhas do teste aumentaram.";
+            else if (stats.JitterMs.HasValue && baseline.JitterMs.HasValue && stats.JitterMs > baseline.JitterMs + 3) rejection = "O ping médio caiu, mas a variação aumentou mais de 3 ms.";
+            assessments.Add(new(route, stats, rejection is null, rejection ?? "Ping médio menor confirmado nos dois testes, dentro dos limites de qualidade."));
+            if (rejection is null && stats.AverageMs < best.AverageMs) { winner = route; best = stats; }
         }
-        return new(winner, winner.IsDirect
-            ? "Nenhuma ponte demonstrou vantagem suficiente. Conexão direta mantida."
-            : $"{winner.Name} teve melhor resultado nos testes. Confirme a melhora dentro do jogo.", baseline, best);
+        var reason = winner.IsDirect
+            ? "Conexão direta mantida: nenhum outro caminho confirmou ping médio menor dentro dos limites de qualidade."
+            : $"Menor ping médio confirmado: {winner.Name}, {best.AverageMs:0.0} ms; direta {baseline.AverageMs:0.0} ms. Confirme dentro do jogo.";
+        return new(winner, reason, baseline, best) { Assessments = assessments };
     }
-
-    private static double Score(Statistics stats) => stats.MedianMs!.Value + .25 * stats.P95Ms!.Value + .1 * (stats.JitterMs ?? 0);
 }
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.8.3";
+    public string Version { get; init; } = "0.8.4";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? CompletedAt { get; set; }
     public required string Game { get; init; }
     public required ObservedDestination Destination { get; init; }
     public string Method => ManualSelection ? "Escolha manual do usuário, acompanhada por ICMP IPv4. Não representa vencedor automático nem comprova ping/perda UDP do jogo. Ensaios existentes são históricos."
-        : "ICMP IPv4 ao destino observado no processo. Seleção exploratória entre caminhos disponíveis; não comprova ping/perda dos pacotes UDP do jogo.";
+        : "Menor ping médio ICMP IPv4 ao mesmo destino observado no processo, confirmado em dois blocos por caminho. Empates ou melhora inconsistente mantêm a direta. Limites: sem piora de falhas ou p95, jitter até 3 ms acima da direta. Não comprova ping/perda UDP do jogo.";
     public List<RouteTrial> Trials { get; } = [];
     public AutomaticChoice? Choice { get; set; }
     public bool ManualSelection { get; set; }
@@ -167,6 +178,7 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
             }
             await lease.ApplyAsync(report.Choice.Winner, ct);
             report.CurrentRoute = report.Choice.Winner;
+            report.CompletedAt = DateTimeOffset.UtcNow;
             status?.Report(report.Choice.Reason);
             return report;
         }

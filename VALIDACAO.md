@@ -170,3 +170,13 @@ Os cinco modos simple/devices/account/render/update passaram. A interface perman
 - O instalador administrativo verificou seu payload incorporado. O pacote 0.8.3 real foi descoberto e baixado; a cópia adulterada foi rejeitada por checksum. Uma cópia portátil isolada de 0.8.2 aplicou 0.8.3 e reiniciou confirmando a versão, sem modificar a instalação normal. Esse teste usa preparação controlada e não valida a rotina antiga de limpeza do painel na instalação comum de 0.8.2; para esta correção recomenda-se usar o instalador nos dois PCs.
 
 Ainda falta testar a versão nos PCs reais de Acre e Cascavel, com seus firewalls, rede compartilhada e um jogo em execução. Nenhum resultado local demonstra redução de ping nesses computadores.
+
+## Versão 0.8.4 · menor ping confirmado
+
+92/92 testes passaram com integração ICMP local real. Compilação Release sem erros ou avisos. A política foi testada com ganho pequeno repetido, ponte mais lenta, empate, escolha da menor média em vez da pontuação composta, ganho isolado não reproduzível, variação temporal da direta, bloco duplicado e mudança do tipo de túnel. Continuam passando rejeições por p95, falhas, jitter e destinos incompatíveis, além de cancelamento e restauração.
+
+Os seis modos paths/devices/simple/diagram/render/update passaram. No fluxo real da interface com rotas simuladas identificadas: direta 99 / ponte 134 escolheu direta; uma nova comparação direta 99 / ponte 96 escolheu ponte. O seletor foi clicado e a sessão permaneceu ativa nas trocas. O diagrama identificou o valor inativo como último teste. Renderização, painel recebido, recuperação e atualização continuam passando. A captura de interface foi inspecionada.
+
+O instalador verificou a integridade do payload incorporado. O atualizador descobriu e baixou o pacote 0.8.4 real e rejeitou uma cópia adulterada por checksum. Uma cópia portátil isolada de 0.8.3 aplicou a atualização e reiniciou confirmando 0.8.4, sem modificar a instalação normal do usuário ou suas rotas. A validação do feed público ocorre separadamente após a publicação.
+
+Não foram medidas rotas reais entre Acre e Cascavel nesta versão. As escolhas de 99/134/96 ms acima são fixtures de validação da lógica, não resultados da internet do usuário. A seleção inicial não garante menor ping ao longo de toda a sessão e não altera o encaminhamento interno das operadoras. Para comparar novamente, selecione Automático no diagrama antes de jogar; alternar saídas pode reconectar a partida.

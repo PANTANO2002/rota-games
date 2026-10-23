@@ -1,14 +1,13 @@
-# RotaGame 0.8.3 — PANT_CORE
+# RotaGame 0.8.4 — PANT_CORE
 
-- Corrigida a primeira criação da regra do painel no Windows: regra inexistente retorna FileNotFoundException, que antes interrompia a preparação e impedia reconhecer os dois RotaGame. Regra ausente também deixa de falhar na limpeza. Erros de permissão continuam sendo informados.
-- Reconhecimento automático usa a identificação recebida pelo canal privado. Um único parceiro é salvo automaticamente; vários candidatos continuam exigindo escolha. Descoberta envia somente identidade; as medições completas vão para o parceiro selecionado.
-- Ao clicar no diagrama do PC jogador, é possível escolher Direta, uma ponte disponível ou Automático. A escolha manual interrompe a comparação/monitoramento anterior, restaura sua preferência e aplica o caminho escolhido com confirmação. O destaque muda depois da aplicação.
-- Modo manual aparece no estado, diagrama, relatório e painel do amigo. Não é apresentado como vencedor de um teste. ICMP sem resposta não desfaz uma escolha manual; a indisponibilidade efetiva do túnel ainda aciona a volta à direta.
-- Voltar ao automático refaz a comparação objetiva. Desativar continua restaurando a preferência anterior da sessão. Alterações externas são preservadas.
-- Falha do canal das medições aparece separada da disponibilidade do túnel, com orientação para permissão do Windows, resposta incompatível ou tempo esgotado.
+- Automático prioriza o menor ping médio confirmado até o mesmo destino do jogo, entre a conexão direta e as pontes disponíveis. Ganhos pequenos e repetidos podem vencer; removido o corte anterior de 5 ms / 5% e o ranking por pontuação composta.
+- Cada ponte precisa confirmar o ganho nos dois blocos de teste, sem aumentar as falhas ICMP ou o p95, e com jitter no máximo 3 ms acima da direta. Empate, resultados insuficientes ou melhora inconsistente mantêm a direta. Um bloco duplicado não conta como dois testes.
+- O relatório e a tabela explicam por que uma ponte não foi escolhida. O diagrama diferencia média ao vivo do último teste de uma rota não ativa; o comparativo mostra o horário da medição.
+- O seletor destaca “Automático · menor ping confirmado”. Selecioná-lo novamente refaz a comparação. A escolha manual de Direta ou de uma ponte continua disponível e identificada.
+- Mantidas as correções de reconhecimento dos dois PCs, canal de medições e recuperação de conexão da 0.8.3. Atualizador embutido com publicação pelo GitHub.
 
-Instale esta versão nos dois PCs. A 0.8.2 afetada pode falhar ao preparar o encerramento do painel; nesse caso use o instalador desta release. O atualizador segue embutido.
+No Acre: Ativar e deixar em Automático. Em Cascavel: manter o PC ponte disponível. Compare antes da partida; alternar o ponto de saída pode reconectar o jogo. O teste mantém o mesmo destino observado, sem inventar servidores ou trocar a região selecionada no jogo.
 
-A primeira criação, leitura e remoção de uma regra isolada foram testadas no Windows real, junto de TCP no adaptador privado desta máquina. Dois perfis novos se reconheceram e trocaram uma medição ICMP real sem seleção manual, em TCP local. Isso ainda não comprova funcionamento entre os PCs reais de Acre e Cascavel. A seleção manual foi validada com rotas simuladas identificadas, sem alterar rotas do usuário.
+O programa escolhe entre caminhos que existem e estão autorizados. Com dois PCs e uma saída de internet em cada um, isso significa direta ou pelo PC ponte. Não controla os roteadores das operadoras nem oferece uma rede própria de relays. O Tailscale negocia automaticamente o túnel entre os PCs; adicionar novos pontos de saída exigiria outros PCs ou servidores disponíveis.
 
-Os números são diagnósticos ICMP e podem diferir do contador do jogo. Nenhuma redução de ping é garantida. Trocar o caminho pode reconectar a partida.
+Os pings são ICMP do caminho completo e podem diferir do contador do jogo. A seleção é uma comparação por blocos, não uma medição simultânea de todas as rotas nem uma garantia de menor ping em todo momento. Não foi medida melhora desta versão entre os PCs reais de Acre e Cascavel.

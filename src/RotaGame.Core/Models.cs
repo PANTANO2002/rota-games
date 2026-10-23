@@ -43,7 +43,7 @@ public sealed class MeasurementBlock
 public sealed class MeasurementSession
 {
     public string SchemaVersion { get; init; } = "1.0";
-    public string AppVersion { get; init; } = "0.8.3";
+    public string AppVersion { get; init; } = "0.8.4";
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public required string Game { get; init; }
