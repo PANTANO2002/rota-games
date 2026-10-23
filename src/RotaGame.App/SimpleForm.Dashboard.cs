@@ -345,8 +345,9 @@ internal sealed partial class SimpleForm
         if (_remoteShown) return;
         _routeMap.BridgeMode = _host.Checked;
         _routeMap.Report = _routeMap.Destination is not null && _report?.Destination == _routeMap.Destination ? _report : null;
-        _routeMap.SetActivity(_active && !_host.Checked && !_restoring && _cts?.IsCancellationRequested != true && _routeMap.Destination is not null,
-            _routeMap.Report?.Choice is not null ? _selected : null);
+        _routeMap.ManualSelection = _manualRoute is not null;
+        _routeMap.SetActivity(_active && !_host.Checked && !_restoring && !_switchingPath && _cts?.IsCancellationRequested != true && _routeMap.Destination is not null,
+            _routeMap.Report?.Choice is not null || _routeMap.Report?.ManualSelection == true ? _selected : null);
         _liveTag.Text = _active ? "AO VIVO" : "AGUARDANDO";
     }
 

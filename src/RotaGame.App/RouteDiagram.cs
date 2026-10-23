@@ -27,6 +27,8 @@ internal sealed class RouteDiagram : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal ReceivedDevice? Remote { get => _remote; set { _remote = value; Changed(); } }
     internal event EventHandler? LayoutNeedsChanged;
+    internal event EventHandler? ChoosePathRequested;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] internal bool ManualSelection { get; set; }
     internal int PreferredContentHeight => _rowCount switch { 1 => 128, 2 => 196, _ => 264 };
     internal bool AnimationRunning => _animation.Enabled;
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] internal string? PreviewLabel { get; set; }
@@ -65,8 +67,11 @@ internal sealed class RouteDiagram : Control
     {
         SetStyle(ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
         BackColor = DashboardTheme.Surface; AccessibleRole = AccessibleRole.Graphic; AccessibleName = "Caminhos da conexão";
+        TabStop = true; Cursor = Cursors.Hand;
         _animation.Tick += (_, _) => { UpdateAnimation(); Invalidate(); };
     }
+    protected override void OnMouseClick(MouseEventArgs e) { base.OnMouseClick(e); if (e.Button == MouseButtons.Left) ChoosePathRequested?.Invoke(this, EventArgs.Empty); }
+    protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); if (e.KeyCode is Keys.Enter or Keys.Space) { ChoosePathRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; } }
 
     internal void SetActivity(bool active, RouteOption? selected)
     {
@@ -92,7 +97,7 @@ internal sealed class RouteDiagram : Control
     internal void CompleteMeasurement(RouteOption route, MeasurementBlock block)
     {
         // Keep comparison blocks only. The rolling monitor can run for hours.
-        if (_report?.Choice is null && block.Status == "complete")
+        if (_report?.Choice is null && _report?.ManualSelection != true && block.Status == "complete")
         {
             if (!_blocks.TryGetValue(route.Id, out var list)) _blocks[route.Id] = list = [];
             if (list.All(b => b.Id != block.Id)) list.Add(block);
@@ -114,7 +119,7 @@ internal sealed class RouteDiagram : Control
                 var value = live ? fresh && m.Confirmed ? m.AverageMs : null : r.AverageMs;
                 return new DiagramRouteView(new(r.Id, r.Name), value.HasValue ? value.Value.ToString("0.0") + " ms" : "—",
                     live ? moving ? "Ao vivo · PC do amigo" : "Aguardando sonda do amigo" : "Comparado no PC do amigo",
-                    current ? m.Active ? "NO AMIGO" : "ÚLTIMA ROTA" : "COMPARADA", current, moving);
+                    current ? m.Active ? m.ManualSelection ? "MANUAL · NO AMIGO" : "NO AMIGO" : "ÚLTIMA ROTA" : "COMPARADA", current, moving);
             }).ToArray();
         }
         var options = _routes.Values.ToList();
@@ -130,7 +135,7 @@ internal sealed class RouteDiagram : Control
                 var value = live ? fresh && _verified && _sample!.Outcome == ProbeOutcome.Success ? _live?.AverageMs : null : stats.AverageMs;
                 var detail = live ? !fresh ? "Aguardando sonda" : !_verified ? "Rota sem confirmação" : _sample!.Outcome != ProbeOutcome.Success
                     ? "Sem resposta" : $"Média ao vivo · {_live?.Attempts ?? 0} sondas" : stats.Attempts > 0 ? $"Comparação · {stats.Received} respostas" : "Aguardando medição";
-                var badge = selected ? _active ? "EM USO" : "ÚLTIMA ROTA" : _active && _selected is null && route.Id == _current?.Id ? "EM TESTE" : stats.Attempts > 0 ? "COMPARADA" : "";
+                var badge = selected ? _active ? ManualSelection ? "MANUAL · EM USO" : "EM USO" : "ÚLTIMA ROTA" : _active && _selected is null && route.Id == _current?.Id ? "EM TESTE" : stats.Attempts > 0 ? "COMPARADA" : "";
                 return new DiagramRouteView(route, value.HasValue ? value.Value.ToString("0.0") + " ms" : "—", detail, badge, selected, moving);
             }).ToArray();
     }

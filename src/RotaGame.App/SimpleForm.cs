@@ -66,7 +66,7 @@ internal sealed partial class SimpleForm : Form
         ConfigureDevices();
         _tips.SetToolTip(_metrics[0], "Média das últimas 30 sondas respondidas no caminho atual. Atualizada a cada resposta; não é o contador interno do jogo.");
         _tips.SetToolTip(_metrics[3], "Falhas de sondas ICMP podem ser filtragem do destino; não comprovam perda dos pacotes do jogo.");
-        _tips.SetToolTip(_routeMap, "Ping: média ICMP real do caminho completo. As animações ilustram o fluxo; não representam pacotes capturados nem latências de cada trecho.");
+        _tips.SetToolTip(_routeMap, "Clique no diagrama para escolher direta, ponte ou automático. Ping: média ICMP do caminho completo; animações ilustrativas.");
         _activate.Click += async (_, _) => await ToggleConnectionAsync();
         _deactivate.Click += async (_, _) => await DeactivateAsync();
         _setup.Click += (_, _) => ShowConnectionPage();
@@ -138,6 +138,7 @@ internal sealed partial class SimpleForm : Form
         catch (Exception ex) { _state.Text = "Não foi possível concluir"; _message.Text = ex.Message; _tips.SetToolTip(_message, ex.Message); }
         finally
         {
+            _comparingPaths = false; _switchingPath = false;
             if (!_offering && !smoke)
             {
                 try { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)); await _lease.RestoreAsync(timeout.Token); }
@@ -187,16 +188,24 @@ internal sealed partial class SimpleForm : Form
 
     private void RefreshResult()
     {
-        if (_report?.Choice is not { } choice) return;
-        var gain = choice.DirectStats.AverageMs - choice.WinnerStats.AverageMs;
-        var difference = !gain.HasValue ? "sem medição suficiente" : Math.Abs(gain.Value) < .1 ? "sem diferença" : gain.Value.ToString("0.0") + " ms menor";
-        _baseline.Text = $"Direta: {N(choice.DirectStats.AverageMs)} ms   ·   Escolhida: {N(choice.WinnerStats.AverageMs)} ms   ·   {difference}";
+        if (_report is null) return;
+        if (_report.ManualSelection)
+        {
+            _baseline.Text = "Manual · " + _selected.Name + (_report.Trials.Count > 0 ? " · comparação anterior abaixo" : " · sem comparação automática concluída");
+            _emptyResults.Text = "Escolha manual aplicada. Acompanhe o ping atual acima.";
+        }
+        else if (_report.Choice is { } choice)
+        {
+            var gain = choice.DirectStats.AverageMs - choice.WinnerStats.AverageMs;
+            var difference = !gain.HasValue ? "sem medição suficiente" : Math.Abs(gain.Value) < .1 ? "sem diferença" : gain.Value.ToString("0.0") + " ms menor";
+            _baseline.Text = $"Direta: {N(choice.DirectStats.AverageMs)} ms   ·   Escolhida: {N(choice.WinnerStats.AverageMs)} ms   ·   {difference}";
+        }
         _table.Rows.Clear();
         foreach (var group in _report.Trials.GroupBy(t => t.Route.Id))
         {
             var stats = Statistics.Combine(group.Select(t => t.Block));
             var option = group.First().Route;
-            _table.Rows.Add(option.Name, N(stats.AverageMs), N(stats.P95Ms), N(stats.JitterMs), N(stats.FailurePercent) + "%", option.Id == choice.Winner.Id ? "Escolhido" : "Comparado");
+            _table.Rows.Add(option.Name, N(stats.AverageMs), N(stats.P95Ms), N(stats.JitterMs), N(stats.FailurePercent) + "%", option.Id == _selected.Id ? _report.ManualSelection ? "Manual · em uso" : "Escolhido" : "Comparado");
         }
     }
 

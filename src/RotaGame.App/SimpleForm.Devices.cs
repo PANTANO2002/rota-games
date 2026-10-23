@@ -35,6 +35,7 @@ internal sealed partial class SimpleForm
         _playerChoice.Click += (_, _) => SelectRole(DeviceRole.Player); _bridgeChoice.Click += (_, _) => SelectRole(DeviceRole.Bridge);
         _state.TextChanged += (_, _) => _quickState.Text = _state.Text;
         _pickPartner.Click += (_, _) => { if (_bridgeReadiness == BridgeReadiness.PermissionUnconfirmed) ShowConnectionPage(); else PickPartner(); };
+        _routeMap.ChoosePathRequested += (_, _) => ShowPathPicker();
         _play.CheckedChanged += (_, _) => { if (!_active && !_settingRole && _play.Checked) SelectRole(DeviceRole.Player); };
         _host.CheckedChanged += (_, _) => { if (!_active && !_settingRole && _host.Checked) SelectRole(DeviceRole.Bridge); };
         _deviceTimer.Tick += (_, _) => { if (!_deviceBusy) _deviceTask = RefreshDevicesAsync(); };
@@ -109,16 +110,16 @@ internal sealed partial class SimpleForm
         if (_device.Role == DeviceRole.Player)
         {
             var now = DateTimeOffset.UtcNow; var stats = Statistics.From(_rolling); var last = _rolling.LastOrDefault();
-            var views = _routeMap.Snapshot(now); var current = views.FirstOrDefault(r => r.Badge is "EM USO" or "EM TESTE")?.Route ?? _selected;
+            var views = _routeMap.Snapshot(now); var current = views.FirstOrDefault(r => r.Badge is "EM USO" or "EM TESTE" or "MANUAL · EM USO")?.Route ?? _selected;
             var rows = _report?.Trials.GroupBy(t => t.Route.Id).Select(g =>
             {
                 var s = Statistics.Combine(g.Select(t => t.Block)); var r = g.First().Route;
-                return new SharedRoute(r.Id, Clean(r.Name, 100), s.AverageMs, s.P95Ms, s.JitterMs, s.FailurePercent, r.Id == _report.Choice?.Winner.Id);
+                return new SharedRoute(r.Id, Clean(r.Name, 100), s.AverageMs, s.P95Ms, s.JitterMs, s.FailurePercent, r.Id == (_report.ManualSelection ? _selected.Id : _report.Choice?.Winner.Id));
             }).Take(9).ToArray() ?? views.Select(v => new SharedRoute(v.Route.Id, Clean(v.Route.Name, 100), null, null, null, null, false)).ToArray();
             measurements = new(_active && !_restoring, Clean(_state.Text, 180), Clean(_activeProfileId is { } id ? _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? "" : "", 100),
                 _routeMap.Destination?.Ip, current.Id, Clean(current.Name, 100), last?.At, stats.AverageMs, stats.JitterMs, stats.P95Ms, stats.FailurePercent,
                 _chart.Samples.TakeLast(180).Select(s => new GraphPoint(s.At, s.Outcome == ProbeOutcome.Success ? s.RttMs : null, s.Outcome)).ToArray(), rows)
-            { SampleAgeMs = last is null ? null : Math.Max(0, (now - last.At).TotalMilliseconds), Confirmed = views.Any(v => v.Moving), Comparing = _active && _report is null && _routeMap.Destination is not null, Explanation = Clean(_report?.Choice?.Reason ?? _message.Text, 500) };
+            { SampleAgeMs = last is null ? null : Math.Max(0, (now - last.At).TotalMilliseconds), Confirmed = views.Any(v => v.Moving), Comparing = _comparingPaths, ManualSelection = _manualRoute is not null, Explanation = Clean(_manualRoute is not null ? _message.Text : _report?.Choice?.Reason ?? _message.Text, 500) };
         }
         return new(1, _deviceSession, Interlocked.Increment(ref _frameSequence), _device.DeviceId, _device.Role, Clean(_device.Name, 80), measurements);
     }
@@ -131,7 +132,6 @@ internal sealed partial class SimpleForm
         try
         {
             if (_device.Role == DeviceRole.Unknown) return;
-            Volatile.Write(ref _outbound, MakeFrame());
             _tailStatus = _client.Installed ? await _client.StatusAsync(_deviceLifetime.Token) : null;
             if (_tailStatus?.State != "Running")
             {
@@ -139,6 +139,7 @@ internal sealed partial class SimpleForm
                 await StopPanelAsync(); _partner = null; ClearRemoteView(); _partnerCaption.Text = "Conta ainda não conectada. Use Conectar para continuar."; UpdateDeviceLabels(); return;
             }
             var status = _tailStatus;
+            Volatile.Write(ref _outbound, MakeFrame());
             UpdateBridgeAvailability(true, status.SelfApproved);
             if (_device.Role == DeviceRole.Bridge)
             {
@@ -157,23 +158,25 @@ internal sealed partial class SimpleForm
                 var targets = status.Peers.Where(p => p.Online && (PeerPanelServer.IsTailAddress(IPAddress.TryParse(p.Ip, out var ip) ? ip : IPAddress.None)))
                     .Where(p => _device.PartnerNodeId is null || Node(p) == _device.PartnerNodeId).Take(8).ToArray();
                 var frame = Volatile.Read(ref _outbound)!;
+                var failures = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
                 // Discovery sends identity only. Measurements go exclusively to
                 // the selected partner after a successful role handshake.
                 await Task.WhenAll(targets.Select(async peer =>
                 {
                     try
                     {
-                        var paired = _device.PartnerNodeId == Node(peer);
-                        var outgoing = frame with { Measurements = paired ? frame.Measurements : null, PairRequested = paired, BridgeUsable = peer.Offered };
+                        var outgoing = PeerMatching.Outgoing(_device, Node(peer), peer.Offered, frame);
                         var response = await PeerPanelServer.ExchangeAsync(IPAddress.Parse(peer.Ip), outgoing, _deviceLifetime.Token);
                         _devices.Receive(Node(peer), peer.Ip, response, DateTimeOffset.UtcNow);
                     }
-                    catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or OperationCanceledException or System.Text.Json.JsonException or InvalidDataException) { }
+                    catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or OperationCanceledException or System.Text.Json.JsonException or InvalidDataException) { failures.Enqueue(ex); }
                 }));
+                if (failures.TryPeek(out var failure)) { _panelIssue = PanelIssue(failure); _tips.SetToolTip(_partnerCaption, failure.GetType().Name + " · 0x" + failure.HResult.ToString("X8")); }
+                else _panelIssue = null;
             }
             var opposite = _device.Role == DeviceRole.Bridge ? DeviceRole.Player : DeviceRole.Bridge;
             var candidates = _devices.Fresh(DateTimeOffset.UtcNow, opposite).Where(p => status.Peers.Any(s => s.Online && Node(s) == p.NodeId)).ToArray();
-            if (_device.PartnerNodeId is null && candidates.Length == 1) SaveDevice(_device with { PartnerNodeId = candidates[0].NodeId });
+            var recognized = PeerMatching.Recognize(_device, candidates); if (recognized != _device) SaveDevice(recognized);
             _partner = candidates.FirstOrDefault(p => p.NodeId == _device.PartnerNodeId);
             _connectionPage?.SetPlayerFound(_partner is { Frame.Role: DeviceRole.Player, Frame.BridgeUsable: true });
             UpdateBridgeAvailability(true, status.SelfApproved);
@@ -182,20 +185,26 @@ internal sealed partial class SimpleForm
                 if (_partner?.Frame.Measurements is not null) ApplyRemoteView(_partner);
                 else { ClearRemoteView(); _partnerCaption.Text = _partner is null ? "Aguardando o RotaGame do amigo. Abra a mesma versão nos dois PCs." : "Amigo reconhecido. Aguardando suas medições."; }
             }
-            if (_partner is null && _device.Role == DeviceRole.Player) _partnerCaption.Text = candidates.Length > 1 ? "Há mais de uma ponte. Use Escolher PC para selecionar a sua." : "Procurando o RotaGame da ponte…";
+            if (_partner is null && _device.Role == DeviceRole.Player) _partnerCaption.Text = candidates.Length > 1 ? "Há mais de uma ponte. Use Escolher PC para selecionar a sua." : _panelIssue ?? "Procurando o RotaGame da ponte…";
             UpdateDeviceLabels();
         }
         catch (OperationCanceledException) when (_deviceLifetime.IsCancellationRequested) { }
-        catch (Exception)
+        catch (Exception ex)
         {
             if (!IsDisposed)
             {
                 if (_partner is not null && DateTimeOffset.UtcNow - _partner.ReceivedAt >= TimeSpan.FromSeconds(10)) { _partner = null; ClearRemoteView(); }
-                _partnerCaption.Text = "Conexão do painel ainda indisponível. As medições locais continuam funcionando.";
+                _partnerCaption.Text = PanelIssue(ex); _tips.SetToolTip(_partnerCaption, ex.GetType().Name + " · 0x" + ex.HResult.ToString("X8"));
             }
         }
         finally { _deviceBusy = false; }
     }
+    private string? _panelIssue;
+    private static string PanelIssue(Exception ex) => ex is UnauthorizedAccessException || ex.HResult == unchecked((int)0x80070005)
+        ? "O Windows não liberou o painel. Abra o RotaGame como administrador."
+        : ex is System.Text.Json.JsonException or InvalidDataException ? "Resposta do outro RotaGame incompatível. Atualize os dois PCs."
+        : ex is System.Net.Sockets.SocketException or OperationCanceledException ? "O canal das medições não respondeu. Tentando conectar automaticamente…"
+        : "Não consegui preparar o painel no Windows. Detalhes ao apontar para este aviso.";
     private async Task StopPanelAsync()
     {
         if (_panelServer is { } server) { _panelServer = null; await server.DisposeAsync(); }
@@ -225,7 +234,7 @@ internal sealed partial class SimpleForm
         var thisBridge = _tailStatus?.SelfIp == m.RouteId;
         _state.Text = !m.Active ? "Amigo conectado · medição parada" : stale ? "Amigo conectado · aguardando medição" : m.RouteId.Length == 0 ? "Amigo na conexão direta" : thisBridge ? m.Comparing ? "Amigo testando esta ponte" : m.Confirmed ? "Esta ponte está em uso pelo amigo" : "Ponte selecionada · aguardando confirmação" : "Amigo usando outro caminho";
         _message.Text = "Medido em " + partner.Frame.Name + ": " + m.State + (m.Explanation.Length > 0 ? " · " + m.Explanation : "") + (partner.Frame.BridgeUsable ? "" : " · o amigo ainda não tem permissão de usar esta ponte.");
-        _table.Rows.Clear(); foreach (var row in m.Routes) _table.Rows.Add(row.Name, N(row.AverageMs), N(row.P95Ms), N(row.JitterMs), N(row.FailurePercent) + "%", row.Selected ? "Usado pelo amigo" : "Comparado no amigo");
+        _table.Rows.Clear(); foreach (var row in m.Routes) _table.Rows.Add(row.Name, N(row.AverageMs), N(row.P95Ms), N(row.JitterMs), N(row.FailurePercent) + "%", row.Selected ? m.ManualSelection ? "Manual · em uso" : "Usado pelo amigo" : "Comparado no amigo");
         _baseline.Text = "Medições recebidas de " + partner.Frame.Name + " · caminho: " + m.RouteName;
         _table.Visible = _resultScroll.Visible = _table.Rows.Count > 0; _emptyResults.Visible = !_table.Visible; UpdateResultScroll();
     }

@@ -8,6 +8,18 @@ internal static class Program
         Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         ApplicationConfiguration.Initialize();
         Application.SetDefaultFont(FontAssets.Ui(10));
+        if (args.Length == 2 && args[0] == "--paths-smoke")
+        {
+            var directory = Path.GetFullPath(args[1]); Directory.CreateDirectory(directory); var routes = new PathSmokeRoutes(); var meter = new PathSmokeMeter();
+            using var paths = new SimpleForm(routes, meter, new SmokeStore(), new RotaGame.Windows.GameLibrary(Path.Combine(directory, "games.json"), () => []));
+            paths.Shown += async (_, _) =>
+            {
+                try { await paths.RunPathSmokeAsync(directory, routes, meter); }
+                catch (Exception ex) { File.WriteAllText(Path.Combine(directory, "paths-error.txt"), ex.ToString()); Environment.ExitCode = 1; }
+                finally { paths.Close(); }
+            };
+            Application.Run(paths); return;
+        }
         if (args.Length == 2 && args[0] == "--devices-smoke")
         {
             var directory = Path.GetFullPath(args[1]); Directory.CreateDirectory(directory);

@@ -31,17 +31,32 @@ internal sealed partial class SimpleForm
             _report = null; _table.Rows.Clear(); _emptyResults.Visible = true; ClearLive();
             _routeMap.Destination = destination; _routeMap.Report = null; SyncDashboard();
             _destination.Text = smoke ? "Validação local: estes valores não representam a conexão do Acre." : $"Destino observado em {destination.ProcessName}. A região é escolhida no jogo.";
-            _report = await new AutomaticOptimizer(_routes, _meter, _lease).ActivateAsync(destination.ProcessName, destination,
-                settings ?? new ProbeSettings(24, 1000, 1000, 32, 2), status, samples, ct, new Inline<string>(s => _message.Text = s));
-            _selected = _report.Choice!.Winner; RefreshResult(); SetControls();
-            _state.Text = smoke ? "Validação local · conexão direta" : "Ativo · " + _selected.Name;
-            _path.Text = "Caminho: " + _selected.Name; _message.Text = _report.Choice.Reason; ClearLive();
-            if (smoke)
+            while (!ct.IsCancellationRequested)
             {
-                await _meter.MeasureAsync(destination.Ip, _selected, new(5, 100, 300, 32, 0), samples, ct);
-                return;
+                var revision = _pathRevision;
+                using var path = CancellationTokenSource.CreateLinkedTokenSource(ct); _pathCts = path;
+                try
+                {
+                    if (_manualRoute is { } requested) await ApplyManualPathAsync(destination, requested, path.Token);
+                    else
+                    {
+                        _report = null; _comparingPaths = true; _switchingPath = false;
+                        _routeMap.Destination = null; _routeMap.Destination = destination; SyncDashboard();
+                        _report = await new AutomaticOptimizer(_routes, _meter, _lease).ActivateAsync(destination.ProcessName, destination,
+                            settings ?? new ProbeSettings(24, 1000, 1000, 32, 2), status, samples, path.Token, new Inline<string>(s => _message.Text = s));
+                        _comparingPaths = false; _selected = _report.Choice!.Winner; RefreshResult(); SetControls();
+                        _state.Text = smoke ? "Validação local · conexão direta" : "Ativo · " + _selected.Name;
+                        _path.Text = "Caminho: " + _selected.Name; _message.Text = _report.Choice.Reason; ClearLive();
+                    }
+                    if (smoke) { await _meter.MeasureAsync(destination.Ip, _selected, new(5, 100, 300, 32, 0), samples, path.Token); return; }
+                    await MonitorDestinationAsync(destination, samples, path.Token); break;
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested && revision != _pathRevision)
+                {
+                    _comparingPaths = false; _switchingPath = true; await RestorePathAsync(); ClearLive(); SyncDashboard();
+                }
+                finally { _pathCts = null; }
             }
-            await MonitorDestinationAsync(destination, samples, ct);
             _state.Text = "Jogo fechado · restaurando a conexão…";
             using (var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20))) await _lease.RestoreAsync(cleanup.Token);
             _activeProfileId = null; _routeMap.Destination = null; _routeMap.Report = null; _routeMap.Invalidate();
@@ -58,7 +73,7 @@ internal sealed partial class SimpleForm
             var eligible = _game.SelectedIndex > 0 ? new[] { _profiles[_game.SelectedIndex - 1] }.AsEnumerable() : _profiles;
             var found = eligible.FirstOrDefault(p => _runningGames.GetValueOrDefault(p.Id)?.Length > 0);
             if (found is not null) return found;
-            _state.Text = "Ativo · aguardando um jogo";
+            _state.Text = (_manualRoute is null ? "Ativo" : "Manual · " + _manualRoute.Name) + " · aguardando um jogo";
             _message.Text = _game.SelectedIndex > 0 ? "Abra " + _game.Text + ". Ele será reconhecido automaticamente." : "Abra um jogo da biblioteca. O reconhecimento está ligado.";
             await Task.Delay(1500, ct);
         }
@@ -80,14 +95,15 @@ internal sealed partial class SimpleForm
             {
                 var block = await _meter.MeasureAsync(destination.Ip, _selected, new(1, 1000, 1000, 32, 0), samples, ct);
                 failed = block.Stats.Received == 0 ? failed + 1 : 0;
-                if (failed >= 5 && !_selected.IsDirect) await FallbackAsync();
+                if (failed >= 5 && !_selected.IsDirect && _manualRoute is null) await FallbackAsync();
+                else if (failed >= 5 && _manualRoute is not null) _message.Text = "O destino não respondeu ao medidor ICMP. Sua escolha manual foi mantida; confira o contador dentro do jogo.";
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (!_selected.IsDirect)
             {
                 var current = await _routes.ReadAsync(ct);
                 if (current.Selector != _selected.Id) throw new InvalidOperationException("A conexão foi alterada fora do programa. A alteração será preservada.");
-                _report!.Notes.Add(ex.Message); await FallbackAsync();
+                _report?.Notes.Add(ex.Message); await FallbackAsync();
             }
             await Task.Delay(Math.Max(0, 1000 - (int)watch.ElapsedMilliseconds), ct);
         }
@@ -96,6 +112,7 @@ internal sealed partial class SimpleForm
         async Task FallbackAsync()
         {
             await _lease.ApplyAsync(RouteOption.Direct, ct); _selected = RouteOption.Direct; failed = 0; ClearLive();
+            if (_report is not null) _report.CurrentRoute = RouteOption.Direct;
             _state.Text = "Ativo · conexão direta"; _path.Text = "Caminho: conexão direta";
             _message.Text = "A ponte falhou ou ficou instável. O programa voltou à conexão direta.";
             _baseline.Text = "Ponte interrompida; acompanhando a conexão direta.";

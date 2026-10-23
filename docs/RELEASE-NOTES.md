@@ -1,21 +1,14 @@
-# RotaGame 0.8.2 — PANT_CORE
+# RotaGame 0.8.3 — PANT_CORE
 
-- Duas escolhas grandes: Vou jogar neste PC (Acre) e Este PC é a ponte (Cascavel). A função e o parceiro ficam salvos.
-- Assistente com uma ação por vez, avançando pelo estado real após o login e a permissão. Conta conectada não volta a pedir login.
-- Convites de compartilhamento de máquina aceitos, sem exigir troca de rede. Convites antigos de usuário continuam reconhecidos.
-- Reconhecimento do outro RotaGame e painel da ponte com as medições recebidas do jogador, incluindo média, variação, p95, falhas, gráfico e caminho. Requer 0.8 nos dois PCs.
-- Comparação inclui túneis diretos e caminhos por intermediário DERP, sob os mesmos limites de qualidade. A rota só muda se houver vantagem medida. Mudanças do tipo de túnel invalidam o bloco.
-- Motivo visível quando apenas a direta pode ser medida. Botão mostra verificação, espera pelo jogo, ativação e desativação.
-- Ajustes de contraste, identificação dos PCs e distribuição do espaço em janelas menores.
-- Atualizador automático mantido: ao abrir aplica a nova versão; com o app aberto oferece Atualizar agora / Depois.
+- Corrigida a primeira criação da regra do painel no Windows: regra inexistente retorna FileNotFoundException, que antes interrompia a preparação e impedia reconhecer os dois RotaGame. Regra ausente também deixa de falhar na limpeza. Erros de permissão continuam sendo informados.
+- Reconhecimento automático usa a identificação recebida pelo canal privado. Um único parceiro é salvo automaticamente; vários candidatos continuam exigindo escolha. Descoberta envia somente identidade; as medições completas vão para o parceiro selecionado.
+- Ao clicar no diagrama do PC jogador, é possível escolher Direta, uma ponte disponível ou Automático. A escolha manual interrompe a comparação/monitoramento anterior, restaura sua preferência e aplica o caminho escolhido com confirmação. O destaque muda depois da aplicação.
+- Modo manual aparece no estado, diagrama, relatório e painel do amigo. Não é apresentado como vencedor de um teste. ICMP sem resposta não desfaz uma escolha manual; a indisponibilidade efetiva do túnel ainda aciona a volta à direta.
+- Voltar ao automático refaz a comparação objetiva. Desativar continua restaurando a preferência anterior da sessão. Alterações externas são preservadas.
+- Falha do canal das medições aparece separada da disponibilidade do túnel, com orientação para permissão do Windows, resposta incompatível ou tempo esgotado.
 
-Tailscale já usa WireGuard. O login e a permissão inicial de compartilhamento continuam na página oficial. Sem VPS ou serviço próprio de provisionamento, essa autorização não pode ser inventada pelo app. Não é necessário configurar IP público ou roteador.
+Instale esta versão nos dois PCs. A 0.8.2 afetada pode falhar ao preparar o encerramento do painel; nesse caso use o instalador desta release. O atualizador segue embutido.
 
-Os indicadores são ICMP, podem diferir do contador do jogo e não garantem melhora. A ponte usa saída geral IPv4, sem separar tráfego por jogo. Testes locais cobrem comunicação entre painéis e recuperação de rotas; a nova versão ainda requer validação real entre os dois PCs.
-A verificação do túnel usa --until-direct=false: respostas via DERP são aceitas como conectividade sem exigir P2P. A fixture da CLI reproduz o erro padrão que antes descartava esse caminho.
+A primeira criação, leitura e remoção de uma regra isolada foram testadas no Windows real, junto de TCP no adaptador privado desta máquina. Dois perfis novos se reconheceram e trocaram uma medição ICMP real sem seleção manual, em TCP local. Isso ainda não comprova funcionamento entre os PCs reais de Acre e Cascavel. A seleção manual foi validada com rotas simuladas identificadas, sem alterar rotas do usuário.
 
-Correções adicionais da 0.8.2:
-- Ativar a ponte aguarda a confirmação real, sem abrir automaticamente a autorização a cada início. Se a confirmação demorar, o painel distingue espera, conta desconectada e permissão ainda não confirmada.
-- A oferta já configurada no Tailscale não é reescrita nem retirada ao parar o RotaGame. Só a oferta introduzida por esta ativação é desfeita, com registro de recuperação e proteção contra mudança de conta/PC. O painel avisa quando preserva uma configuração anterior.
-- O host distingue amigo na direta, testando esta ponte e ponte em uso; não deduz uso apenas pelo login. Recebe também o motivo da escolha e deixa de mostrar valores atuais quando as mensagens/sondas envelhecem.
-- O motivo de não testar uma ponte aparece durante a análise, sem esperar o relatório terminar. A versão completa aparece na lateral.
+Os números são diagnósticos ICMP e podem diferir do contador do jogo. Nenhuma redução de ping é garantida. Trocar o caminho pode reconectar a partida.

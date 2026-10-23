@@ -105,12 +105,18 @@ public sealed class TailscaleClient(ICommandRunner runner, string? executableOve
         return new(status.CurrentExit, status.CurrentExit.Length == 0 || status.ExitOnline, status.State);
     }
 
-    public async Task<IReadOnlyList<RouteOption>> DiscoverAsync(CancellationToken ct)
+    public Task<IReadOnlyList<RouteOption>> DiscoverAsync(CancellationToken ct) => DiscoverCoreAsync(ct);
+    public async Task<RouteOption> ResolveManualAsync(string id, CancellationToken ct)
+    {
+        if (id.Length == 0) return RouteOption.Direct;
+        return (await DiscoverCoreAsync(ct, id)).SingleOrDefault() ?? throw new InvalidOperationException("A ponte escolhida não está disponível ou autorizada. Confira a conexão da ponte.");
+    }
+    private async Task<IReadOnlyList<RouteOption>> DiscoverCoreAsync(CancellationToken ct, string? onlyPeer = null)
     {
         _discoveryNotes.Clear();
         if (!Installed) { _discoveryNotes.Add("Componente da ponte ainda não instalado. Foi medida a conexão direta."); return []; }
         var status = await StatusAsync(ct); if (status.State != "Running") { _discoveryNotes.Add("Conta ainda não conectada ao túnel. Foi medida a conexão direta."); return []; }
-        var candidates = status.Peers.Where(p => p.Online && p.Offered && p.Ip.Length > 0).OrderBy(p => p.Name).Take(8).ToList();
+        var candidates = status.Peers.Where(p => p.Online && p.Offered && p.Ip.Length > 0 && (onlyPeer is null || p.Ip == onlyPeer)).OrderBy(p => p.Name).Take(8).ToList();
         var result = new List<RouteOption>();
         if (candidates.Count == 0) _discoveryNotes.Add(status.Peers.Any(p => p.Online) ? "Há PCs conectados, mas nenhum está aprovado e compartilhado para uso como ponte. Confira a permissão no PC da ponte." : "Nenhuma ponte online encontrada. Abra o RotaGame nos dois PCs e ative a ponte.");
         foreach (var candidate in candidates)

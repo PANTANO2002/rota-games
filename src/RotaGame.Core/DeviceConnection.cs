@@ -56,6 +56,7 @@ public sealed record SharedMeasurements(bool Active, string State, string Game, 
     public double? SampleAgeMs { get; init; }
     public bool Confirmed { get; init; }
     public bool Comparing { get; init; }
+    public bool ManualSelection { get; init; }
     public string Explanation { get; init; } = "";
 }
 public sealed record DeviceFrame(int Protocol, string SessionId, long Sequence, string DeviceId, DeviceRole Role, string Name, SharedMeasurements? Measurements)

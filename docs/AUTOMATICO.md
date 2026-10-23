@@ -82,3 +82,10 @@ A oferta original é consultada antes de ativar. Se o usuário já a configurou 
 A confirmação pode levar alguns segundos. A tela principal permanece aberta: Confirmando a ponte, Ponte disponível e Permissão não confirmada são estados distintos. Verificar ponte abre a orientação oficial apenas quando o usuário escolhe. O painel não trata clicar em autorizar como prova de aprovação.
 
 No host, amigo conectado não significa ponte em uso. O painel distingue conexão direta, teste da ponte e uso da ponte após escolha e sonda confirmada. A explicação da escolha é recebida do jogador, e a idade dos dados considera também o tempo desde a última mensagem. Conta conectada, aprovação, alcance do túnel e desempenho são verificações separadas.
+## Correções e escolha de caminho na 0.8.3
+
+O aviso de painel indisponível podia ser causado pela primeira criação da regra: Windows retorna HRESULT 0x80070002 quando a regra ainda não existe, traduzido pelo .NET para FileNotFoundException. O código tratava apenas COMException. A busca agora considera ausente apenas esse HRESULT; acesso negado e outros erros não são ocultados. A limpeza é idempotente. A regra segue limitada ao executável, IPv4 local do adaptador Tailscale, TCP 52941 e peers privados conhecidos; não se desativa o firewall nem se abrem portas no roteador.
+
+No Acre, clique em qualquer parte do diagrama e escolha Direta, a ponte desejada ou Automático. Manual aplica o caminho escolhido sem exigir que ele vença a comparação. O diagrama identifica MANUAL depois de a seleção ser confirmada. O relatório distingue preferência manual, rota atual e ensaios anteriores. ICMP sem resposta sozinho não desfaz uma escolha manual; indisponibilidade do túnel pode retornar à direta. Automático refaz os testes. Trocas podem reconectar uma partida.
+
+O seletor altera o caminho no computador que vai jogar; o host recebe a identificação do modo e acompanha os resultados. Não há controle remoto de rotas no protocolo de telemetria. Um parceiro único reconhecido no canal privado é salvo sem escolha manual, preservando a privacidade da descoberta. Use a mesma versão nos dois PCs.

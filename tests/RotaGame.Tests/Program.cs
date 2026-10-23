@@ -170,6 +170,7 @@ if (args.Contains("--public-probe"))
 
 tests.AddRange(DeviceTests.All());
 tests.AddRange(BridgeOfferTests.All());
+tests.AddRange(PanelWindowsTests.All(args.Contains("--firewall-integration")));
 var failures = 0;
 foreach (var (name, action) in tests)
 {

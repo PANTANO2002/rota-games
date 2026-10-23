@@ -104,10 +104,17 @@ public sealed class PeerPanelServer : IAsyncDisposable
 }
 
 public interface IPeerPanelFirewall : IDisposable { void Configure(string address, IEnumerable<string> peers); }
+public sealed record PanelFirewallScope(string Application, string LocalAddresses, string RemoteAddresses, string LocalPorts, int Protocol, int Direction, int Action, int Profiles, bool Enabled, bool EdgeTraversal);
 public sealed class PeerPanelFirewall : IPeerPanelFirewall
 {
     private readonly string _application = Environment.ProcessPath ?? throw new InvalidOperationException("Aplicativo sem endereço local.");
-    private string Name => "RotaGame.PrivatePanel." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_application)))[..12];
+    private readonly string _isolation;
+    public PeerPanelFirewall(string? isolationId = null)
+    {
+        if (isolationId is not null && !Guid.TryParseExact(isolationId, "N", out _)) throw new ArgumentException("Identificação de teste inválida.");
+        _isolation = isolationId is null ? "" : ".Probe." + isolationId;
+    }
+    private string Name => "RotaGame.PrivatePanel." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_application)))[..12] + _isolation;
     private const string Group = "RotaGame private measurement panel";
     private string? _configured;
     public void Configure(string address, IEnumerable<string> peers)
@@ -116,31 +123,53 @@ public sealed class PeerPanelFirewall : IPeerPanelFirewall
         var allowed = peers.Distinct().Order().Where(p => IPAddress.TryParse(p, out var ip) && PeerPanelServer.IsTailAddress(ip)).ToArray();
         if (allowed.Length == 0) { Dispose(); return; }
         var key = address + ":" + string.Join(',', allowed); if (_configured == key) return;
-        object? policy = null, rule = null;
+        object? policy = null, rule = null, existing = null;
         try
         {
             policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!);
             rule = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FWRule")!);
             dynamic fw = policy!; dynamic r = rule!;
-            try { dynamic existing = fw.Rules.Item(Name); if ((string)existing.Grouping != Group) throw new InvalidOperationException("Regra de painel já existente não pertence ao RotaGame."); fw.Rules.Remove(Name); }
-            catch (COMException) { }
+            existing = FindRule((object)fw.Rules, Name);
+            if (existing is not null) { CheckOwner(existing); fw.Rules.Remove(Name); }
             r.Name = Name; r.Description = "Somente medições e identificação entre PCs privados autorizados; sem controle remoto."; r.Grouping = Group;
             r.ApplicationName = _application; r.Protocol = 6; r.LocalPorts = PeerPanelServer.Port.ToString(); r.LocalAddresses = address; r.RemoteAddresses = string.Join(',', allowed);
             r.Direction = 1; r.Action = 1; r.Profiles = int.MaxValue; r.EdgeTraversal = false; r.Enabled = true; fw.Rules.Add(r); _configured = key;
         }
-        finally { Release(rule); Release(policy); }
+        finally { Release(existing); Release(rule); Release(policy); }
     }
     public void Dispose()
     {
-        object? policy = null;
+        object? policy = null, existing = null;
         try
         {
             policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!); dynamic fw = policy!;
-            dynamic existing = fw.Rules.Item(Name);
-            if ((string)existing.Grouping == Group && string.Equals((string)existing.ApplicationName, _application, StringComparison.OrdinalIgnoreCase)) fw.Rules.Remove(Name);
+            existing = FindRule((object)fw.Rules, Name);
+            if (existing is not null) { CheckOwner(existing); fw.Rules.Remove(Name); }
         }
-        catch (COMException) { }
-        finally { Release(policy); _configured = null; }
+        finally { Release(existing); Release(policy); _configured = null; }
+    }
+    // ERROR_FILE_NOT_FOUND is translated to FileNotFoundException by .NET,
+    // not COMException. An absent rule is normal on the first launch.
+    public static object? FindRule(object rules, string name)
+    {
+        try { return ((dynamic)rules).Item(name); }
+        catch (Exception ex) when (ex.HResult == unchecked((int)0x80070002)) { return null; }
+    }
+    private void CheckOwner(object value)
+    {
+        dynamic rule = value;
+        if ((string)rule.Grouping != Group || !string.Equals((string)rule.ApplicationName, _application, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("A regra encontrada não pertence a este RotaGame.");
+    }
+    public PanelFirewallScope? ReadScope()
+    {
+        object? policy = null, existing = null;
+        try
+        {
+            policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!); dynamic fw = policy!;
+            existing = FindRule((object)fw.Rules, Name); if (existing is null) return null; CheckOwner(existing); dynamic r = existing;
+            return new((string)r.ApplicationName, (string)r.LocalAddresses, (string)r.RemoteAddresses, (string)r.LocalPorts, (int)r.Protocol, (int)r.Direction, (int)r.Action, (int)r.Profiles, (bool)r.Enabled, (bool)r.EdgeTraversal);
+        }
+        finally { Release(existing); Release(policy); }
     }
     private static void Release(object? value) { if (value is not null && Marshal.IsComObject(value)) Marshal.FinalReleaseComObject(value); }
 }

@@ -110,13 +110,17 @@ public static class AutomaticPolicy
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.8.2";
+    public string Version { get; init; } = "0.8.3";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public required string Game { get; init; }
     public required ObservedDestination Destination { get; init; }
-    public string Method => "ICMP IPv4 ao destino observado no processo. Seleção exploratória entre caminhos disponíveis; não comprova ping/perda dos pacotes UDP do jogo.";
+    public string Method => ManualSelection ? "Escolha manual do usuário, acompanhada por ICMP IPv4. Não representa vencedor automático nem comprova ping/perda UDP do jogo. Ensaios existentes são históricos."
+        : "ICMP IPv4 ao destino observado no processo. Seleção exploratória entre caminhos disponíveis; não comprova ping/perda dos pacotes UDP do jogo.";
     public List<RouteTrial> Trials { get; } = [];
     public AutomaticChoice? Choice { get; set; }
+    public bool ManualSelection { get; set; }
+    public RouteOption? RequestedRoute { get; set; }
+    public RouteOption? CurrentRoute { get; set; }
     public List<string> Notes { get; } = [];
 }
 
@@ -162,6 +166,7 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
                 report.Choice = report.Choice with { Reason = reason + " Conexão direta mantida." };
             }
             await lease.ApplyAsync(report.Choice.Winner, ct);
+            report.CurrentRoute = report.Choice.Winner;
             status?.Report(report.Choice.Reason);
             return report;
         }
