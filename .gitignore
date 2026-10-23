@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+app/
+validation/
+Releases/
+*.nupkg
+*.zip
+*.exe
+*.log
+games.json*
+connection-recovery.json*
+*.user
+*.conf
+!*.conf.example
