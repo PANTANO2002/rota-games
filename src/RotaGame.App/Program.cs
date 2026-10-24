@@ -8,6 +8,15 @@ internal static class Program
         Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         ApplicationConfiguration.Initialize();
         Application.SetDefaultFont(FontAssets.Ui(10));
+        if (args.Length == 2 && args[0] == "--network-smoke")
+        {
+            var directory = Path.GetFullPath(args[1]); Directory.CreateDirectory(directory);
+            var routes = new NetworkSmokeRoutes(); var meter = new NetworkSmokeMeter(routes);
+            using var networkForm = new OptimizerForm(new RotaGame.Windows.GameLibrary(Path.Combine(directory,"games.json"),()=>[]),[],routes,meter,
+                new RotaGame.Core.NetworkTracer(new NetworkSmokeProbe(),new NetworkSmokeObserver(routes)),new SmokeStore(),directory);
+            networkForm.Shown += async (_,_)=> {try {await networkForm.SmokeAsync(directory,routes,meter);}catch(Exception ex) {File.WriteAllText(Path.Combine(directory,"network-error.txt"),ex.ToString());Environment.ExitCode=1;}finally {networkForm.Close();}};
+            Application.Run(networkForm); return;
+        }
         if (args.Length == 2 && args[0] == "--paths-smoke")
         {
             var directory = Path.GetFullPath(args[1]); Directory.CreateDirectory(directory); var routes = new PathSmokeRoutes(); var meter = new PathSmokeMeter();
@@ -142,15 +151,18 @@ internal static class Program
         }
         if (!args.Contains("--ui-smoke") && !args.Contains("--advanced"))
         {
-            SimpleForm? start;
+            Form? start;
             var updates = new AppUpdates(); IntroForm? opening = null;
             using (opening = new IntroForm(async ct =>
             {
-                var main = await LoadMainAsync(ct);
+                var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RotaGame");
+                var library = new RotaGame.Windows.GameLibrary(Path.Combine(folder, "games.json"));
+                var profiles = await Task.Run(library.Load, ct);
+                var main = new OptimizerForm(library, profiles);
                 var workflow = new UpdateWorkflow(updates, main.PrepareForUpdateAsync);
                 workflow.Changed += (_, _) => opening?.SetStartupStatus(workflow.Message);
                 if (await workflow.CheckAsync(true, ct)) { main.Dispose(); return null; }
-                ct.ThrowIfCancellationRequested(); main.ConfigureUpdates(updates, workflow.Message); opening?.SetStartupStatus(null); return main;
+                ct.ThrowIfCancellationRequested(); main.ConfigureUpdates(updates, workflow); opening?.SetStartupStatus(null); return main;
             })) { opening.ShowDialog(); start = opening.LoadedForm; }
             if (start is not null) Application.Run(start);
             return;

@@ -1,3 +1,15 @@
+# Validação 0.9.0 · 23/10/2026 · PANT_CORE
+
+112/112 testes automatizados passaram, incluindo ICMP, consulta de rota e traceroute reais até loopback. Foram testados silêncio em saltos, destino parcial, troca de interface, cancelamento, identidade WARP divergente, contas pagas/corporativas/estados desconhecidos, DNS-only, preparação sem consentimento e preservação de registros existentes. Falhas de serviço não recriam contas.
+
+A escolha WARP 75 ms vs. direta 110 ms e o retorno à direta quando WARP fica em 140 ms são cenários simulados, não resultados de uma rede real. As capturas trazem aviso de simulação. A interface é validada em 1080/1440/1600, com biblioteca vazia, cartões em várias linhas, trajetos longos, botão de recomparação, limpeza ao desativar, termos inicialmente desmarcados e avisos de atualização preservados da abertura.
+
+O MSI e o CLI oficial atuais foram inspecionados em diretório de trabalho: assinatura Authenticode válida da Cloudflare, Inc., comandos e flags conferidos por --help. O componente não foi instalado nem registrado neste computador. Não houve aceitação automática de termos durante os testes. **Não foi validada a conexão WARP real, o formato de resposta de um serviço registrado nesta instalação, nem melhora em uma partida no Acre.** A integração falha sem alterar preferências quando não consegue interpretar ou confirmar o componente.
+
+O pacote independente 0.9.0 passou pelo teste da nova interface, introdução de 4,120 s e regras de aviso/adiamento. O instalador teve o payload incorporado conferido sem instalar no perfil do usuário. Velopack baixou o pacote real local e rejeitou uma cópia adulterada por checksum. A atualização isolada de um pacote portátil 0.8.4 para 0.9.0 foi preparada e reiniciou na nova versão, sem mudar rotas reais.
+
+Os registros abaixo são históricos das versões anteriores e não descrevem os requisitos da abertura atual.
+
 # Validação da entrega 0.6 — 23/10/2026
 
 ## Diagrama animado e ping atual

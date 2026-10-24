@@ -6,7 +6,7 @@ namespace RotaGame.App;
 
 internal sealed class IntroForm : Form
 {
-    private readonly Func<CancellationToken, Task<SimpleForm?>> _load;
+    private readonly Func<CancellationToken, Task<Form?>> _load;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 16 };
     private readonly Stopwatch _watch = new();
@@ -15,10 +15,10 @@ internal sealed class IntroForm : Form
     private bool _ready;
     private string? _error;
     private string? _startupMessage;
-    internal SimpleForm? LoadedForm { get; private set; }
+    internal Form? LoadedForm { get; private set; }
     internal static readonly TimeSpan Duration = TimeSpan.FromSeconds(4);
 
-    public IntroForm(Func<CancellationToken, Task<SimpleForm?>> load)
+    public IntroForm(Func<CancellationToken, Task<Form?>> load)
     {
         _load = load; ClientSize = new Size(640, 370); FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96); ShowInTaskbar = false; BackColor = DashboardTheme.Canvas; Icon = BrandAssets.LoadIcon();

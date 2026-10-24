@@ -7,7 +7,7 @@ public sealed record RouteOption(string Id, string Name, string Link = "direct")
 }
 
 public sealed record ObservedDestination(string Ip, int Port, string Protocol, int ProcessId, string ProcessName, long Packets);
-public sealed record RouteReading(string Selector, bool Ready, string Detail);
+public sealed record RouteReading(string Selector, bool Ready, string Detail) { public string? Identity { get; init; } }
 
 public interface IAutomaticRoutes
 {
@@ -24,7 +24,7 @@ public interface IAutomaticMeter
         IProgress<MeasurementProgress>? progress, CancellationToken ct);
 }
 
-public sealed record RecoveryRecord(string OriginalSelector, string LastAppliedSelector, DateTimeOffset CreatedAt, string? PreviousSelector = null);
+public sealed record RecoveryRecord(string OriginalSelector, string LastAppliedSelector, DateTimeOffset CreatedAt, string? PreviousSelector = null, string? Identity = null);
 public interface IRecoveryStore
 {
     RecoveryRecord? Load();
@@ -43,7 +43,7 @@ public sealed class RouteLease(IAutomaticRoutes routes, IRecoveryStore store)
     {
         if (store.Load() is not null) throw new InvalidOperationException("Existe uma conexão anterior para restaurar. Clique em Desativar primeiro.");
         var current = await routes.ReadAsync(ct);
-        _record = new(current.Selector, current.Selector, DateTimeOffset.UtcNow);
+        _record = new(current.Selector, current.Selector, DateTimeOffset.UtcNow, Identity: current.Identity);
         store.Save(_record);
     }
 
@@ -51,6 +51,7 @@ public sealed class RouteLease(IAutomaticRoutes routes, IRecoveryStore store)
     {
         if (_record is null) throw new InvalidOperationException("Sessão de conexão não iniciada.");
         var current = await routes.ReadAsync(ct);
+        if (_record.Identity is not null && current.Identity != _record.Identity) throw new InvalidOperationException("A identificação da conexão mudou. A nova configuração foi preservada.");
         if (current.Selector != _record.LastAppliedSelector && current.Selector != _record.PreviousSelector)
             throw new InvalidOperationException("A conexão foi alterada fora do RotaGame. A alteração externa será preservada.");
         _record = _record with { LastAppliedSelector = option.Id, PreviousSelector = current.Selector };
@@ -63,6 +64,7 @@ public sealed class RouteLease(IAutomaticRoutes routes, IRecoveryStore store)
         var record = _record ?? store.Load();
         if (record is null) return;
         var current = await routes.ReadAsync(ct);
+        if (record.Identity is not null && current.Identity != record.Identity) throw new InvalidOperationException("A identificação da conexão mudou. A nova configuração foi preservada; restauração pendente.");
         if (current.Selector == record.LastAppliedSelector || current.Selector == record.OriginalSelector || current.Selector == record.PreviousSelector)
             await routes.SelectAsync(new(record.OriginalSelector, "Conexão anterior"), ct);
         // A manual change outside this program wins over a stale recovery record.
@@ -86,12 +88,12 @@ public static class AutomaticPolicy
         var directBlocks = trials.Where(t => t.Route.IsDirect).Select(t => t.Block).ToList();
         var baseline = Statistics.Combine(directBlocks);
         if (directBlocks.Count < 2 || directBlocks.Any(b => b.Stats.Received < 10) || baseline.Received < 20 || baseline.MedianMs is null)
-            return new(RouteOption.Direct, "Sem respostas suficientes para escolher uma ponte. Conexão direta mantida.", baseline, baseline);
+            return new(RouteOption.Direct, "Sem respostas suficientes para escolher outro caminho. Conexão direta mantida.", baseline, baseline);
         var reference = directBlocks[0];
         var directFingerprint = reference.Samples[0].RouteBefore.Fingerprint;
         if (directBlocks.Any(b => b.TargetIp != reference.TargetIp || b.Settings != reference.Settings ||
             b.Samples.Any(s => s.RouteBefore.Fingerprint != directFingerprint || s.RouteAfter.Fingerprint != directFingerprint)))
-            return new(RouteOption.Direct, "A conexão direta mudou durante os testes. Conexão direta mantida sem concluir sobre as pontes.", baseline, baseline);
+            return new(RouteOption.Direct, "A conexão direta mudou durante os testes. Conexão direta mantida sem concluir sobre os caminhos.", baseline, baseline);
         var winner = RouteOption.Direct; var best = baseline;
         var assessments = new List<RouteAssessment>();
         foreach (var group in entries.Where(t => !t.Route.IsDirect).GroupBy(t => t.Route.Id))
@@ -100,7 +102,7 @@ public static class AutomaticPolicy
             var measured = trials.Where(t => t.Route.Id == group.Key).ToList();
             var stats = Statistics.Combine(measured.Select(t => t.Block));
             string? rejection = null;
-            if (route.Link is not ("direct" or "relay") || group.Any(t => t.Route.Link != route.Link)) rejection = "O tipo de túnel não foi confirmado ou mudou entre os testes.";
+            if (route.Link is not ("direct" or "relay" or "warp") || group.Any(t => t.Route.Link != route.Link)) rejection = "O tipo de túnel não foi confirmado ou mudou entre os testes.";
             else if (measured.Count < 2 || stats.Received < 20 || measured.Any(t => t.Block.Stats.Received < 10) || stats.AverageMs is null || stats.MedianMs is null || stats.P95Ms is null || stats.FailurePercent is null) rejection = "Medições completas ou respostas insuficientes.";
             else if (measured.Any(t => t.Block.TargetIp != reference.TargetIp || t.Block.Settings != reference.Settings)) rejection = "Destino ou condições de medição diferentes da conexão direta.";
             else if (stats.AverageMs >= baseline.AverageMs) rejection = "O ping médio não foi menor que o da conexão direta.";
@@ -120,7 +122,7 @@ public static class AutomaticPolicy
 
 public sealed class AutomaticReport
 {
-    public string Version { get; init; } = "0.8.4";
+    public string Version { get; init; } = "0.9.0";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
     public required string Game { get; init; }
@@ -145,8 +147,8 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
         await lease.BeginAsync(ct);
         try
         {
-            status?.Report("Procurando pontes disponíveis…");
-            var candidates = (await routes.DiscoverAsync(ct)).Where(c => !c.IsDirect && c.Link is "direct" or "relay").GroupBy(c => c.Id).Select(g => g.First()).Take(8).ToList();
+            status?.Report("Procurando caminhos disponíveis…");
+            var candidates = (await routes.DiscoverAsync(ct)).Where(c => !c.IsDirect && c.Link is "direct" or "relay" or "warp").GroupBy(c => c.Id).Select(g => g.First()).Take(8).ToList();
             if (routes is IRouteDiscoveryDiagnostics diagnostics) foreach (var note in diagnostics.DiscoveryNotes) Note(note);
             status?.Report("Medindo conexão direta…");
             await Measure(RouteOption.Direct);
@@ -156,7 +158,7 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
                 {
                     try
                     {
-                        status?.Report($"Comparando caminho por {candidate.Name}…");
+                        status?.Report($"Comparando caminho {candidate.Name}…");
                         await Measure(candidate); await Measure(candidate);
                     }
                     catch (OperationCanceledException) { throw; }
@@ -167,13 +169,13 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
                     }
                 }
             }
-            else Note("Destino respondeu pouco ou não respondeu a ICMP. Pontes não foram testadas.");
+            else Note("Destino respondeu pouco ou não respondeu a ICMP. Os caminhos alternativos não foram testados.");
             status?.Report("Confirmando a conexão direta…");
             await Measure(RouteOption.Direct);
             report.Choice = AutomaticPolicy.Choose(report.Trials);
             if (!report.Trials.Any(t => !t.Route.IsDirect))
             {
-                var reason = candidates.Count == 0 ? report.Notes.FirstOrDefault() ?? "Nenhuma ponte disponível para comparar." : report.Notes.LastOrDefault() ?? "As pontes disponíveis não puderam ser medidas.";
+                var reason = candidates.Count == 0 ? report.Notes.FirstOrDefault() ?? "Nenhum caminho alternativo disponível para comparar." : report.Notes.LastOrDefault() ?? "Os caminhos alternativos não puderam ser medidos.";
                 report.Choice = report.Choice with { Reason = reason + " Conexão direta mantida." };
             }
             await lease.ApplyAsync(report.Choice.Winner, ct);
@@ -200,3 +202,4 @@ public sealed class AutomaticOptimizer(IAutomaticRoutes routes, IAutomaticMeter 
         void Note(string note) { report.Notes.Add(note); diagnosis?.Report(note); }
     }
 }
+

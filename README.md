@@ -1,134 +1,56 @@
-# RotaGame 0.8 — PANT_CORE
+# RotaGame 0.9.0 · PANT_CORE
 
-**Autoria e assinatura: PANT_CORE.** Otimizador experimental de caminhos e diagnóstico para jogos no Windows 11 x64. Não garante redução de ping.
+**Autoria: PANT_CORE.** Protótipo pessoal para Windows 11 x64: compara conexão direta e **Cloudflare WARP gratuito**, mede latência e mostra o trajeto observado até o destino do jogo. Não garante redução de ping.
 
-Use **RotaGame-Setup.exe** para instalar. O instalador pede a autorização de administrador pelo Windows e cria atalhos; o runtime está incluído. Também existe **RotaGame-win-Portable.zip**: extraia todo o conteúdo e abra RotaGame.exe na pasta extraída. A autorização de administrador do Windows é necessária à descoberta automática dos destinos do jogo; não substitui a autorização da conta Tailscale.
+[Instalador](https://github.com/PANTANO2002/rota-games/releases/latest/download/RotaGame-Setup.exe) · [Versões](https://github.com/PANTANO2002/rota-games/releases)
 
-Canal de versões: [Releases](https://github.com/PANTANO2002/rota-games/releases). Endereço fixo do instalador: [RotaGame-Setup.exe](https://github.com/PANTANO2002/rota-games/releases/latest/download/RotaGame-Setup.exe). As novas versões são distribuídas pelos assets das Releases.
+## Como usar
 
-## Atualizações automáticas
+1. Instale RotaGame-Setup.exe no PC do jogador. A descoberta de tráfego exige a autorização de administrador do Windows; o runtime acompanha o programa.
+2. Clique **Preparar rota gratuita**, leia os termos e a política da Cloudflare e aceite se concordar. Conclua o instalador oficial; o app tenta continuar a preparação automaticamente. Se o serviço ainda estiver iniciando, tente o botão novamente. Não contrate WARP+.
+3. Abra um jogo instalado, entre em treino e clique **Ativar**. Alternar a saída pode reconectar a sessão.
+4. Aguarde a comparação. O app usa WARP somente quando confirma melhora nos critérios de qualidade; caso contrário mantém a direta.
+5. **Desativar** encerra as medições e restaura o estado anterior da conexão WARP.
 
-O atualizador está embutido. **Ao abrir**, procura uma versão posterior no canal GitHub e, se encontrada, baixa, confere o pacote, encerra a conexão do RotaGame e reinicia na nova versão. **Com o app aberto**, verifica a cada 15 minutos e mostra **Atualizar agora / Depois**, sem reiniciar até a escolha do usuário. A seta circular lateral também permite verificar e retomar uma atualização adiada.
+Sem WARP instalado, o diagnóstico direto funciona. O PC de Cascavel não precisa estar ligado. O fluxo normal dispensa Tailscale, convites, IP manual, VPS e conta RotaGame. WARP é um componente da Cloudflare, separado do RotaGame. Quando escolhido, afeta a saída geral de internet do computador, não apenas o jogo. Contas corporativas, pagas e configurações desconhecidas são preservadas e bloqueiam o controle automático.
 
-Sem internet ou sem canal publicado, continua na versão atual e informa a falha de verificação. Não informa “versão mais recente” quando a consulta falha. A biblioteca e as configurações ficam fora da pasta do aplicativo. Se não conseguir restaurar uma rota alterada pelo app, não agenda a reinicialização.
+## Comparação e mapa
 
-Quem usa 0.6 ou anterior precisa instalar esta versão uma vez. O executável solto fora da instalação/pacote portátil completo não recebe atualizações. A abertura normal mantém a introdução de cerca de 4 segundos; a busca/download de uma atualização pode prolongar a espera, com o estado mostrado na tela.
+O teste fixa o mesmo IPv4 observado e mede quatro blocos: direta / WARP / WARP / direta. São 24 sondas por bloco, além do aquecimento; demora alguns minutos. Exige dez respostas por bloco, melhora de média repetida nos dois blocos alternativos, sem piorar p95 ou falhas ICMP e sem aumentar jitter em mais de 3 ms. Empates e testes inconclusivos mantêm a direta. Não há margem mínima de 5 ms ou 5%.
 
-Veja [publicação e atualização](docs/ATUALIZACOES.md). PANT_CORE é a assinatura de autoria; o instalador ainda não tem certificado digital Authenticode.
+Após a escolha, monitora o caminho. **Recomparar rotas** repete o teste; faça isso fora de uma partida competitiva. Se a alternativa perde confirmação ou deixa de responder, tenta voltar à direta. Não troca de saída a cada oscilação durante a partida.
 
-A tela mostra **ping médio atual**, atualizado a cada sonda, variação, p95, falhas do teste e gráfico. A média considera as últimas 30 sondas do caminho atual; sondas sem resposta não viram zero. Os valores são diagnósticos ICMP e podem diferir do contador do jogo.
+O diagrama mostra saltos respondendo a sondas ICMP com TTL crescente e o destino observado IP:porta/protocolo. O RTT é acumulado de ida e volta da sonda, não atraso isolado do trecho. Saltos silenciosos e o interior do WARP podem ficar ocultos. Não inventa cidades, servidores ou latências. Clique no mapa para medir novamente o trajeto. A troca de interface durante a medição invalida os saltos antigos.
 
-O novo painel usa cartões de jogos, navegação lateral, chave ON/OFF, busca da biblioteca e diagrama dos caminhos realmente medidos. Os botões têm degradê e brilho suave, com destaque ao passar o mouse e ao selecionar; a chave ligada ganha brilho verde. O visual foi inspirado nas referências fornecidas; o produto mantém identidade própria RotaGame e não incorpora a rede de servidores do ExitLag.
+A média atual considera as últimas 30 sondas do caminho em medição; o gráfico conserva até 180. Timeout não vira zero. Falhas ICMP não comprovam perda de UDP do jogo. As luzes são ilustrativas e só indicam fluxo com resposta recente. O mapa cresce em novas linhas, com barra estilizada quando necessário.
 
-Na versão **0.6**, o diagrama ganhou cartões com degradê, brilho nos nós e conexões curvas com pontos animados. A rota **Em uso** fica verde; durante a comparação, a rota **Em teste** recebe destaque azul. As outras mostram a média da **Comparação**, sem fingir que todas são medidas simultaneamente. O caminho em uso mostra a mesma média ICMP atual do indicador principal; timeout aparece como **Sem resposta**, sem substituir por zero. Se a ponte falhar e o app voltar à direta, o destaque acompanha essa mudança. Ao desativar, o diagrama identifica a última rota e os resultados anteriores, sem continuar mostrando uma conexão em uso.
+“Melhor” significa o melhor entre as duas saídas medidas nessa sessão. O programa não escolhe cada roteador da operadora, POP da Cloudflare, cidade ou servidor do jogo. Menos saltos não garante menor ping. Confirme o resultado também no contador da partida.
 
-Até três caminhos ficam visíveis, priorizando a direta e o caminho atual; a tabela mantém os demais resultados. O painel reserva altura para os caminhos adicionais e usa a barra do app quando necessário. As luzes ilustram o fluxo: não são pacotes capturados nem latências de trechos separados. A animação para ao ocultar/minimizar, desativar ou ficar sem uma sonda recente e confirmada. A prévia `branding/RotaGame-diagrama.gif` usa dados simulados identificados na própria imagem; o uso normal só exibe dados recebidos do medidor.
+## Biblioteca
 
-A abertura mostra a logo sendo desenhada, o nome e pontos de uma conexão animada por cerca de **4 segundos**, enquanto prepara a biblioteca em segundo plano. Pode pular quando o painel estiver pronto. Os títulos e números usam Rajdhani; os textos e botões usam Barlow. As fontes acompanham o executável e são carregadas apenas pelo processo, sem instalação no Windows. A prévia está em `branding/RotaGame-intro.gif`.
+The Finals, Rocket League e GTA Online só aparecem com executáveis instalados encontrados. Use **+ Adicionar jogo** para escolher outro .exe; o ícone vem do arquivo. A biblioteca é revista a cada 30 segundos enquanto inativa e os processos a cada dois segundos. Cartões excedentes vão para outra linha, sem barra horizontal. Remova um cadastro pelo botão direito.
 
-## Adicionar e reconhecer jogos
+Ativar pode aguardar um jogo e seu tráfego; o app não abre o jogo. Clicar em um cartão limita a detecção; clicar novamente volta a todos. A descoberta prioriza UDP sustentado, mas é heurística: pode detectar voz ou outro jogador, especialmente em GTA Online. Uma mudança persistente de destino inicia nova comparação. Apenas IPv4 nesta versão.
 
-A biblioteca começa vazia quando não há instalações encontradas. Os três perfis conhecidos (The Finals, Rocket League e GTA V/Online) só aparecem se o aplicativo encontrar seu executável instalado, usando registros locais de Steam, Epic ou Windows. A lista é atualizada aproximadamente a cada 30 segundos enquanto não há uma partida sendo analisada. Outras instalações podem ser adicionadas manualmente; a detecção não cobre todos os jogos e launchers. Um jogo removido do disco deixa de aparecer na atualização seguinte.
+## Atualizador embutido
 
-Clique em **+ Adicionar jogo** ou no cartão **Adicionar jogo** e escolha o arquivo `.exe` da partida. O cadastro fica salvo para as próximas aberturas. Se possível, selecione o executável do jogo, evitando launchers que abrem outro processo.
+Na abertura, verifica o GitHub e aplica uma versão posterior antes de abrir o painel. Com o app aberto, verifica a cada 15 minutos e oferece **Atualizar agora / Depois**. O botão **Atualizações**, no topo, permite verificar ou retomar um adiamento. Erros da consulta ficam visíveis.
 
-Cada cartão usa o ícone extraído do executável. A marca e o ícone próprios do RotaGame estão em `branding/`, com SVG, PNG e ICO de vários tamanhos, e o ícone está incorporado no executável e nas janelas.
+Antes de reiniciar, encerra medições e restaura alterações próprias de conexão. Recuperação pendente bloqueia o reinício. Biblioteca e diários ficam em %LOCALAPPDATA%/RotaGame. O ZIP portátil precisa ser extraído inteiro; o EXE solto não recebe atualização. Versões anteriores a 0.7 exigem migração pelo instalador.
 
-Os cartões distribuem a largura disponível. Quando não couberem numa linha, somente os cartões excedentes vão para a linha de baixo, preservando a largura dos demais. Não há rolagem horizontal na biblioteca. A tela se ajusta à altura disponível e só mostra sua barra vertical quando atinge o limite de redução ou precisa acomodar mais linhas de jogos. As barras são controles próprios com trilho arredondado, degradê e brilho nos estados de interação, operáveis por arraste, clique, roda e teclado.
+A logo animada cobre cerca de quatro segundos do carregamento. Uma atualização pode prolongar a abertura, com estado informado. PANT_CORE é assinatura de autoria; não há certificado Authenticode próprio no executável.
 
-Os cartões mostram **Em execução** ou **Fechado**. O programa verifica os processos a cada dois segundos, inclusive quando a otimização está desligada. A busca no topo filtra os jogos cadastrados. Clique em um cartão para limitar a detecção àquele jogo ou em **Automático · todos os jogos** para observar a biblioteca toda. Jogos adicionados podem ser removidos pelo menu de botão direito no cartão, com a otimização desligada.
+## Validação e desenvolvimento
 
-Com **Ativar** ligado, o programa pode ficar aguardando o jogo iniciar: quando o reconhece, espera tráfego e começa a análise. Quando o jogo fecha, restaura a conexão anterior e volta a aguardar outro jogo da biblioteca. **Adicionar o executável não inicia o jogo nem cria uma conexão especial com o servidor**; o jogo deve ser aberto normalmente.
+112 testes automatizados incluem ICMP e traceroute reais de loopback, recuperação e cenários simulados de seleção e interface. **O WARP real e a melhora em partidas no Acre ainda precisam de validação de campo.** Não se afirma equivalência à rede do ExitLag.
 
-## Conectar os dois PCs
+[Guia](docs/AUTOMATICO.md) · [Arquitetura](docs/ARQUITETURA-AUTO.md) · [Validação](VALIDACAO.md) · [Atualizações](docs/ATUALIZACOES.md) · [Componentes](THIRD_PARTY.md)
 
-Instale a mesma versão nos dois PCs. Escolha uma vez na tela principal:
+Requer Windows x64 e SDK .NET 10:
 
-1. **Cascavel: Este PC é a ponte → Ativar ponte.** Se faltar login ou permissão, o assistente mostra apenas a próxima ação e avança quando o serviço confirma.
-2. **Acre: Vou jogar neste PC → Ativar conexão.** Entre na própria conta. Se a ponte já estiver aprovada e visível, não precisa repetir convite.
-3. Se ainda não houver acesso, em Cascavel siga **Compartilhar minha ponte**. Na página oficial, localize o nome exibido, escolha Share e marque **Allow use as exit node**. Envie o link. No Acre, use **Colar convite → Aceitar convite e conectar** e aceite na página oficial. O app procura a ponte automaticamente.
-
-O novo fluxo compartilha a máquina, sem pedir ao amigo que troque de rede. Links antigos de convite de usuário continuam aceitos e têm uma etapa explícita de conexão à rede convidada. A função e a identificação do outro PC ficam salvas. Não se deduz a cidade pelo IP: a escolha identifica qual PC oferece a ponte.
-
-A entrada continua no navegador oficial do Tailscale/Google. O programa confirma o estado real e sai da etapa de login mesmo se o auxiliar ainda estiver esperando. Ele não coleta senha nem cria uma tela Google falsa. Sem um serviço próprio de provisionamento, o dono precisa conceder a autorização inicial na página oficial. Não é necessário digitar IPv4 público, abrir porta no roteador ou configurar WireGuard manualmente; Tailscale já fornece esse túnel.
-
-Os RotaGame reconhecem os papéis pelo canal privado. Quando existe uma única ponte RotaGame, o parceiro é salvo; com várias, use **Escolher PC**. As medições completas só vão para o parceiro selecionado. Em Cascavel, os indicadores dizem **PC do amigo**: são os valores medidos no Acre, não um ping local inventado. Se a comunicação ou a sonda ficar antiga, o app retira os valores atuais. Ambos precisam usar 0.8 ou posterior.
-
-## Para jogar
-
-1. No RotaGame do Acre, escolha **Vou jogar neste PC** e clique **Ativar conexão**. Pode fazer isso antes de abrir o jogo.
-2. Abra o jogo cadastrado e entre em treino para gerar tráfego. Ele será reconhecido automaticamente.
-3. Aguarde a descoberta e a comparação da direta com as pontes disponíveis, normalmente alguns minutos.
-4. Acompanhe o **ping médio atual** e as médias da comparação inicial.
-5. Clique **Desativar** para parar e restaurar a preferência de conexão anterior.
-
-As trocas iniciais podem reconectar a sessão. Ative em treino, antes da partida competitiva. Depois de escolher, o programa mantém o caminho e o monitora; não alterna pontes a cada oscilação. Se não houver melhora suficiente, mantém a direta. Se a ponte falhar, tenta retornar à direta.
-
-O RotaGame de Cascavel mostra os valores recebidos do Acre e distingue conectado, ponte disponível e caminho escolhido. Conta conectada sozinha não prova que a ponte está autorizada. Quando somente a direta for medida, o motivo aparece no resultado. Pontes com intermediário DERP também são comparadas; só são escolhidas se passarem pelos mesmos limites de qualidade.
-
-O PC de casa precisa permanecer ligado, conectado e sem suspender. A ponte usa saída geral de internet: quando escolhida, navegação e downloads do amigo também podem passar por sua conexão. Esta versão não separa tráfego por aplicativo.
-
-## Limites e estado da entrega
-
-“Melhor caminho” significa o melhor entre a direta e as pontes cadastradas, autorizadas e medidas nessa sessão. Não há rede pública própria de relays nem troca automática de servidor/região do jogo.
-
-A descoberta usa metadados por processo e perfis heurísticos dos três jogos. Pode observar voz ou outro jogador, especialmente em GTA Online. Um destino sem resposta ICMP impede uma conclusão confiável. Ao mudar de sessão/região, desative e ative novamente em treino.
-
-**Esta correção ainda não foi validada entre Acre e Cascavel.** Foram testados o protocolo dos painéis com ICMP e TCP reais em loopback, os estados de login, o seletor de rotas e a interface. O diagnóstico local também confirmou que um peer aprovado pode estar online por intermediário; a versão 0.8 passa a medir esse caminho, sem presumir que melhora o ping.
-
-Leia o [guia do modo automático](docs/AUTOMATICO.md), a [arquitetura atual](docs/ARQUITETURA-AUTO.md), a [validação](VALIDACAO.md) e os [componentes externos](THIRD_PARTY.md). O Laboratório foi retirado da navegação: as medições e a comparação usadas para jogar estão na tela principal. O diagnóstico manual anterior fica apenas como ferramenta de desenvolvimento pelo argumento `--advanced`, documentado em docs/DIAGNOSTICO-AVANCADO.md.
-
-## Desenvolvimento
-
-Requer Windows x64 e SDK .NET 10. A descoberta usa Microsoft.Diagnostics.Tracing.TraceEvent 4.0.0.
-
-    .\build.ps1
     dotnet run --project tests/RotaGame.Tests -c Release -- --integration
+    dotnet build src/RotaGame.App -c Release
+    .\app\RotaGame.exe --network-smoke .\validation\v0.9
+    .\pack.ps1 -Version 0.9.0
 
-Testes externos e descoberta ETW explícita, como administrador:
-
-    dotnet run --project tests/RotaGame.Tests -c Release -- --integration --discovery-integration --public-probe
-
-Smoke local da interface publicada (não muda a rede):
-
-    .\app\RotaGame.exe --simple-smoke .\validation
-
-Validação de pixels realmente apresentados pelo Windows após redimensionar (abre temporariamente a janela de teste):
-
-    .\app\RotaGame.exe --render-smoke .\validation
-
-Validação controlada da aba de conta, sem abrir sites, instalar Tailscale ou criar uma conta real:
-
-    .\app\RotaGame.exe --account-smoke .\validation
-
-Validação do carregamento durante a introdução, duração de 3–5 segundos e exportação dos quadros da animação:
-
-    .\app\RotaGame.exe --intro-smoke .\validation-intro
-
-Validação do diagrama: ICMP local real, média atual, movimento, estados de falha/retorno à direta e prévia visual controlada, identificada como simulação:
-
-    .\app\RotaGame.exe --diagram-smoke .\validation-diagram
-
-Projeto independente, sem afiliação ao ExitLag, Tailscale ou aos jogos citados. Sem promessa de redução de ping.
-
-### Estado e preservação da ponte na 0.8.2
-
-A oferta original é consultada antes de ativar. Se o usuário já a configurou no Tailscale, iniciar/parar o RotaGame preserva essa oferta e informa isso ao encerrar. Se o RotaGame introduziu a oferta, ele a retira ao parar e mantém registro para recuperação. Não se alteram as preferências de uma nova conta/identidade por causa de um registro antigo.
-
-A confirmação pode levar alguns segundos. A tela principal permanece aberta: Confirmando a ponte, Ponte disponível e Permissão não confirmada são estados distintos. Verificar ponte abre a orientação oficial apenas quando o usuário escolhe. O painel não trata clicar em autorizar como prova de aprovação.
-
-No host, amigo conectado não significa ponte em uso. O painel distingue conexão direta, teste da ponte e uso da ponte após escolha e sonda confirmada. A explicação da escolha é recebida do jogador, e a idade dos dados considera também o tempo desde a última mensagem. Conta conectada, aprovação, alcance do túnel e desempenho são verificações separadas.
-## Correções e escolha de caminho na 0.8.3
-
-O aviso de painel indisponível podia ser causado pela primeira criação da regra: Windows retorna HRESULT 0x80070002 quando a regra ainda não existe, traduzido pelo .NET para FileNotFoundException. O código tratava apenas COMException. A busca agora considera ausente apenas esse HRESULT; acesso negado e outros erros não são ocultados. A limpeza é idempotente. A regra segue limitada ao executável, IPv4 local do adaptador Tailscale, TCP 52941 e peers privados conhecidos; não se desativa o firewall nem se abrem portas no roteador.
-
-No Acre, clique em qualquer parte do diagrama e escolha Direta, a ponte desejada ou Automático. Manual aplica o caminho escolhido sem exigir que ele vença a comparação. O diagrama identifica MANUAL depois de a seleção ser confirmada. O relatório distingue preferência manual, rota atual e ensaios anteriores. ICMP sem resposta sozinho não desfaz uma escolha manual; indisponibilidade do túnel pode retornar à direta. Automático refaz os testes. Trocas podem reconectar uma partida.
-
-O seletor altera o caminho no computador que vai jogar; o host recebe a identificação do modo e acompanha os resultados. Não há controle remoto de rotas no protocolo de telemetria. Um parceiro único reconhecido no canal privado é salvo sem escolha manual, preservando a privacidade da descoberta. Use a mesma versão nos dois PCs.
-## Versão 0.8.4: menor ping confirmado
-
-No PC jogador, escolha no diagrama **Automático · menor ping confirmado** e ative antes da partida. O programa compara a conexão direta e as pontes online autorizadas até o mesmo destino observado no jogo. Pode escolher a ponte mesmo com ganho menor que 5 ms, desde que ele se repita nos dois blocos e cumpra os limites de qualidade: sem piora de falhas ICMP/p95, jitter no máximo 3 ms acima da direta. Entre as pontes aprovadas pelo teste, ganha a menor média, sem a antiga pontuação composta. Empate e melhora inconsistente mantêm a direta.
-
-O caminho em uso é medido ao vivo. Nos demais, o diagrama mostra **Último teste**; a tabela contém o horário e a explicação da decisão. Voltar ao automático refaz os testes. A comparação inicial não prevê mudanças futuras da internet; para reavaliar, selecione Automático novamente. Alternar entre saídas muda o IP público e pode reconectar o jogo.
-
-Com apenas Acre e Cascavel, os caminhos disponíveis são direta e via Cascavel. O aplicativo não escolhe os roteadores internos das operadoras, não fornece servidores adicionais e não muda a região do jogo. O túnel entre os PCs é negociado pelo Tailscale. Fontes: [tipos de conexão](https://tailscale.com/docs/reference/connection-types) e [pontos de saída](https://tailscale.com/docs/features/exit-nodes).
+Os testes de interface usam dados simulados identificados sem instalar WARP nem alterar conexões. Código legado Tailscale permanece para recuperação de alterações da versão anterior e testes históricos, sem navegação de ponte na abertura normal. O diagnóstico antigo só abre por --advanced.

@@ -171,13 +171,14 @@ if (args.Contains("--public-probe"))
 tests.AddRange(DeviceTests.All());
 tests.AddRange(BridgeOfferTests.All());
 tests.AddRange(PanelWindowsTests.All(args.Contains("--firewall-integration")));
+tests.AddRange(NetworkTests.All(args.Contains("--integration")));
 var failures = 0;
 foreach (var (name, action) in tests)
 {
     try { await action(); Console.WriteLine("PASS " + name); }
     catch (Exception ex) { failures++; Console.WriteLine("FAIL " + name + "\n" + ex); }
 }
-Console.WriteLine($"\n{tests.Count - failures}/{tests.Count} passed. WireGuard end-to-end not tested: no VPS provided.");
+Console.WriteLine($"\n{tests.Count - failures}/{tests.Count} passed. WARP selection fixtures and real localhost diagnostics; no real WARP network or game-session improvement validated.");
 Environment.ExitCode = failures == 0 ? 0 : 1;
 
 sealed class FakeRoutes(params RouteSnapshot[] routes) : IRouteObserver
